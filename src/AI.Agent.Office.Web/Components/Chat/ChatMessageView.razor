@@ -1,0 +1,22 @@
+<div class="msg msg-@(Item.Role == ChatRole.User ? "user" : "assistant") @(Item.IsError ? "msg-error" : string.Empty)">
+    <div class="msg-meta">
+        <span>@(Item.Role == ChatRole.User ? "Tú" : "Orquestador")</span>
+        <span>@Item.Time.ToString("HH:mm")</span>
+    </div>
+    @if (Item.Role == ChatRole.Assistant && Item.TaskCount > 0)
+    {
+        <div class="msg-plan">🧩 @Item.TaskCount tarea(s) delegadas@(string.IsNullOrWhiteSpace(Item.PlanMessage) ? "" : ": " + Item.PlanMessage)</div>
+    }
+    @if (Item.Role == ChatRole.User)
+    {
+        <div class="msg-text">@Item.Content</div>
+    }
+    else
+    {
+        <MarkdownView Content="@Item.Content" />
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public ChatItem Item { get; set; } = default!;
+}

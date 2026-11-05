@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <title>AI Agent Office</title>
+    <base href="/" />
+    <link rel="icon" type="image/svg+xml" href="images/favicon.svg" />
+    <link rel="stylesheet" href="css/office.css" />
+    <HeadOutlet @rendermode="OfficeRenderMode" />
+</head>
+
+<body>
+    <Routes @rendermode="OfficeRenderMode" />
+    <script src="_framework/blazor.web.js"></script>
+    <script src="js/office.js"></script>
+</body>
+
+</html>
+
+@code {
+    // No prerender: the page talks to SignalR, so it should only initialize inside the live circuit.
+    private static readonly IComponentRenderMode OfficeRenderMode = new InteractiveServerRenderMode(prerender: false);
+}

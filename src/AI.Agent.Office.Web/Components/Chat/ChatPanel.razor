@@ -1,0 +1,171 @@
+@inherits OfficeComponentBase
+@inject IJSRuntime JS
+
+<section class="panel chat-panel">
+    <header class="chat-head">
+        <div class="chat-avatar" style="--agent:@(Office.Orchestrator?.Color ?? "#a78bfa")">@(Office.Orchestrator?.Icon ?? "🧠")</div>
+        <div class="chat-id">
+            <h2>@(Office.Orchestrator?.Name ?? "Orquestador")</h2>
+            <span class="muted">@(Office.Orchestrator is { } o ? StatusInfo.Label(o.Status) : "—")</span>
+        </div>
+        <span class="conn conn-@Office.Connection.ToString().ToLowerInvariant()" title="Estado de SignalR">
+            <i></i>@ConnectionLabel
+        </span>
+    </header>
+
+    @if (!Office.AnthropicConfigured)
+    {
+        <div class="banner banner-warn">
+            Falta <code>ANTHROPIC_API_KEY</code>. Crea el archivo <code>.env</code> (ver <code>.env.example</code>) y reinicia la aplicación.
+        </div>
+    }
+
+    <div class="chat-log" @ref="_log">
+        @if (Office.Messages.Count == 0)
+        {
+            <div class="welcome">
+                <div class="welcome-icon">🏢</div>
+                <h3>Bienvenido a la oficina</h3>
+                <p>Háblame de lo que necesitas. Decidiré si lo resuelvo yo o si lo delego a mi equipo de especialistas.</p>
+                <div class="suggestions">
+                    @foreach (var suggestion in Suggestions)
+                    {
+                        <button type="button" class="chip" @onclick="() => UseSuggestion(suggestion)">@suggestion</button>
+                    }
+                </div>
+            </div>
+        }
+
+        @foreach (var item in Office.Messages)
+        {
+            <ChatMessageView Item="item" />
+        }
+
+        @if (Office.IsSending)
+        {
+            <div class="msg msg-assistant typing-row">
+                <div class="msg-meta"><span>Orquestador</span></div>
+                <div class="typing"><span></span><span></span><span></span></div>
+                @if (Office.ActiveAgents.Count > 0)
+                {
+                    <div class="active-agents">
+                        @foreach (var agent in Office.ActiveAgents)
+                        {
+                            <span class="agent-chip" style="--agent:@agent.Color">@agent.Icon @agent.Name · @StatusInfo.Label(agent.Status)</span>
+                        }
+                    </div>
+                }
+                <button type="button" class="link-btn" @onclick="Office.CancelCurrentAsync">Cancelar</button>
+            </div>
+        }
+    </div>
+
+    @if (!string.IsNullOrEmpty(Office.LastError))
+    {
+        <div class="banner banner-error">@Office.LastError</div>
+    }
+
+    @if (Office.Attachments.Count > 0 || Office.IsUploading)
+    {
+        <div class="attachments">
+            @foreach (var doc in Office.Attachments)
+            {
+                <span class="attachment @(doc.RequiresOcr ? "attachment-warn" : string.Empty)"
+                      title="@(doc.RequiresOcr ? "PDF escaneado: se requiere OCR" : doc.PageCount + " páginas")">
+                    📄 @doc.FileName
+                    <button type="button" aria-label="Quitar" @onclick="() => Office.RemoveAttachment(doc.Id)">✕</button>
+                </span>
+            }
+            @if (Office.IsUploading)
+            {
+                <span class="attachment">Procesando PDF…</span>
+            }
+        </div>
+    }
+
+    <div class="composer">
+        <label class="attach-btn" title="Adjuntar PDF">
+            📎
+            <InputFile OnChange="OnFileSelected" accept=".pdf,application/pdf" hidden />
+        </label>
+        <textarea @ref="_input" class="composer-input" rows="1" placeholder="Escribe un mensaje al Orquestador…"
+                  @bind="_draft" @bind:event="oninput"></textarea>
+        <button type="button" class="send-btn" @ref="_sendButton" @onclick="SendAsync"
+                disabled="@(Office.IsSending || string.IsNullOrWhiteSpace(_draft))" title="Enviar (Enter)">➤</button>
+    </div>
+</section>
+
+@code {
+    private const long MaxFileBytes = 10 * 1024 * 1024;
+
+    private static readonly string[] Suggestions =
+    {
+        "Diseña la arquitectura de una API de pedidos y evalúa sus riesgos",
+        "Explícame inyección de dependencias en .NET con ejercicios",
+        "Revisa este enfoque de autenticación con JWT"
+    };
+
+    private ElementReference _log;
+    private ElementReference _input;
+    private ElementReference _sendButton;
+    private string _draft = string.Empty;
+    private int _lastRendered;
+    private bool _wired;
+
+    private string ConnectionLabel => Office.Connection switch
+    {
+        ConnectionStatus.Connected => "Conectado",
+        ConnectionStatus.Connecting => "Conectando",
+        ConnectionStatus.Reconnecting => "Reconectando",
+        _ => "Sin conexión"
+    };
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        try
+        {
+            if (firstRender && !_wired)
+            {
+                _wired = true;
+                await JS.InvokeVoidAsync("officeUi.bindComposer", _input, _sendButton);
+            }
+
+            var count = Office.Messages.Count + (Office.IsSending ? 1 : 0);
+            if (count != _lastRendered)
+            {
+                _lastRendered = count;
+                await JS.InvokeVoidAsync("officeUi.scrollToBottom", _log);
+            }
+        }
+        catch (JSDisconnectedException) { }
+        catch (InvalidOperationException) { }
+    }
+
+    private async Task SendAsync()
+    {
+        var text = _draft;
+        if (string.IsNullOrWhiteSpace(text) || Office.IsSending) return;
+
+        _draft = string.Empty;
+        await JS.InvokeVoidAsync("officeUi.resetHeight", _input);
+        await Office.SendAsync(text);
+    }
+
+    private void UseSuggestion(string text) => _draft = text;
+
+    private async Task OnFileSelected(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        if (file is null) return;
+
+        try
+        {
+            await using var stream = file.OpenReadStream(MaxFileBytes);
+            await Office.AttachAsync(stream, file.Name, file.ContentType);
+        }
+        catch (IOException)
+        {
+            await Office.AttachAsync(Stream.Null, file.Name, file.ContentType); // surfaces the API validation message
+        }
+    }
+}

@@ -1,0 +1,21 @@
+@inherits OfficeComponentBase
+
+<section class="card feed">
+    <h3 class="card-title">Actividad de la oficina <span class="muted">en vivo</span></h3>
+    <ul class="feed-list">
+        @if (Office.Activity.Count == 0)
+        {
+            <li class="empty">Sin actividad todavía. Escribe al Orquestador para empezar.</li>
+        }
+        @foreach (var item in Office.Activity.Take(30))
+        {
+            var agent = Office.Agents.FirstOrDefault(a => a.Id == item.AgentId);
+            <li class="feed-item" @key="item.Id" style="--agent:@(agent?.Color ?? "#8b5cf6")">
+                <span class="feed-dot"></span>
+                <span class="feed-time">@item.Timestamp.LocalDateTime.ToString("HH:mm:ss")</span>
+                <span class="feed-icon">@StatusInfo.EventIcon(item.EventType)</span>
+                <span class="feed-text">@item.Description</span>
+            </li>
+        }
+    </ul>
+</section>

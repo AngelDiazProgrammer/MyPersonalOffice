@@ -1,0 +1,69 @@
+@page "/"
+@inherits OfficeComponentBase
+
+<PageTitle>AI Agent Office</PageTitle>
+
+<main class="split">
+    <section class="panel office-panel">
+        <header class="office-head">
+            <div>
+                <h1>AI Agent Office</h1>
+                <span class="muted">Oficina virtual multiagente · Claude</span>
+            </div>
+            <div class="head-stats">
+                <span class="stat" title="Agentes trabajando ahora"><b>@Office.ActiveAgents.Count</b> activos</span>
+                <span class="stat" title="Llamadas a Claude desde que arrancó la app"><b>@Office.Usage.Requests</b> llamadas</span>
+                <details class="stat usage">
+                    <summary title="Tokens consumidos desde que arrancó la app (clic para ver el detalle)">
+                        <b>@Format(Office.Usage.InputTokens + Office.Usage.OutputTokens)</b> tokens
+                        @if (Office.Usage.EstimatedCostUsd is { } cost)
+                        {
+                            <span>· ≈ $@cost.ToString("0.000")</span>
+                        }
+                    </summary>
+                    <div class="usage-pop">
+                        <div class="usage-row usage-total">
+                            <span>Total</span>
+                            <span>@Format(Office.Usage.InputTokens) entrada · @Format(Office.Usage.OutputTokens) salida · @Office.Usage.Requests llamadas</span>
+                        </div>
+                        @foreach (var u in Office.Usage.ByAgent)
+                        {
+                            var agent = Office.Agents.FirstOrDefault(a => a.Id == u.AgentId);
+                            <div class="usage-row">
+                                <span>@(agent?.Icon) @(agent?.Name ?? u.AgentId)</span>
+                                <span>@Format(u.InputTokens) / @Format(u.OutputTokens) · @u.Requests</span>
+                            </div>
+                        }
+                        @if (Office.Usage.EstimatedCostUsd is null)
+                        {
+                            <div class="muted">Costo estimado oculto: define <code>Pricing</code> en la configuración.</div>
+                        }
+                    </div>
+                </details>
+            </div>
+        </header>
+
+        <OfficeFloor />
+
+        <div class="office-bottom">
+            <ActivityFeed />
+            <TaskPanel />
+        </div>
+    </section>
+
+    <ChatPanel />
+</main>
+
+@code {
+    protected override async Task OnInitializedAsync()
+    {
+        await Office.InitializeAsync();
+    }
+
+    private static string Format(long value) => value switch
+    {
+        >= 1_000_000 => $"{value / 1_000_000d:0.0}M",
+        >= 1_000 => $"{value / 1_000d:0.0}k",
+        _ => value.ToString()
+    };
+}

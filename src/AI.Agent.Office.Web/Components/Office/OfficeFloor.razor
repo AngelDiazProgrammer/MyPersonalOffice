@@ -1,0 +1,20 @@
+@inherits OfficeComponentBase
+
+<div class="floor">
+    <div class="wall">
+        <div class="window"><span></span><span></span><span></span></div>
+        <div class="wall-sign">AI&nbsp;AGENT&nbsp;OFFICE</div>
+        <div class="window"><span></span><span></span><span></span></div>
+    </div>
+
+    <div class="desks">
+        @if (Office.Agents.Count == 0)
+        {
+            <div class="empty-office">Cargando la oficina…</div>
+        }
+        @foreach (var agent in Office.Agents)
+        {
+            <AgentDesk @key="agent.Id" Agent="agent" AssignmentVersion="Office.AssignmentVersion(agent.Id)" />
+        }
+    </div>
+</div>

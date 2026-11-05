@@ -1,0 +1,47 @@
+@inherits OfficeComponentBase
+
+<section class="card tasks">
+    <h3 class="card-title">Tareas <span class="muted">@Office.Tasks.Count(t => StatusInfo.IsActive(t.Status)) activas</span></h3>
+    <ul class="task-list">
+        @if (Office.Tasks.Count == 0)
+        {
+            <li class="empty">Las tareas delegadas aparecerán aquí.</li>
+        }
+        @foreach (var task in Office.Tasks.Take(12))
+        {
+            var agent = Office.Agents.FirstOrDefault(a => a.Id == task.AgentId);
+            <li class="task-item task-@task.Status.ToString().ToLowerInvariant()" @key="task.Id" style="--agent:@(agent?.Color ?? "#8b5cf6")">
+                <details>
+                    <summary>
+                        <span class="task-agent">@(agent?.Icon) @(agent?.Name ?? task.AgentId)</span>
+                        <span class="task-title">@task.Title</span>
+                        <span class="task-badge">@StatusInfo.Label(task.Status)</span>
+                        @if (StatusInfo.IsActive(task.Status))
+                        {
+                            <button type="button" class="task-cancel" title="Cancelar tarea"
+                                    @onclick="() => Office.CancelTaskAsync(task.Id)" @onclick:stopPropagation="true">✕</button>
+                        }
+                    </summary>
+                    <div class="task-body">
+                        @if (task.DependsOn.Count > 0)
+                        {
+                            <div class="muted">Depende de: @string.Join(", ", task.DependsOn)</div>
+                        }
+                        @if (!string.IsNullOrEmpty(task.ErrorMessage))
+                        {
+                            <div class="task-error">@task.ErrorMessage</div>
+                        }
+                        @if (!string.IsNullOrEmpty(task.Result))
+                        {
+                            <MarkdownView Content="@task.Result" />
+                        }
+                        else if (string.IsNullOrEmpty(task.ErrorMessage))
+                        {
+                            <div class="muted">@task.Description</div>
+                        }
+                    </div>
+                </details>
+            </li>
+        }
+    </ul>
+</section>

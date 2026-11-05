@@ -1,0 +1,48 @@
+@using Markdig
+@using Markdig.Syntax
+@using Markdig.Syntax.Inlines
+
+<div class="markdown">@((MarkupString)_html)</div>
+
+@code {
+    // Raw HTML in the source is disabled, and only safe link schemes are kept.
+    private static readonly MarkdownPipeline Pipeline = new MarkdownPipelineBuilder()
+        .UseAdvancedExtensions()
+        .DisableHtml()
+        .Build();
+
+    private string _lastSource = string.Empty;
+    private string _html = string.Empty;
+
+    [Parameter] public string Content { get; set; } = string.Empty;
+
+    protected override void OnParametersSet()
+    {
+        if (_lastSource == Content) return;
+        _lastSource = Content;
+        _html = Render(Content);
+    }
+
+    private static string Render(string markdown)
+    {
+        var document = Markdown.Parse(markdown ?? string.Empty, Pipeline);
+        foreach (var link in document.Descendants<LinkInline>())
+        {
+            var url = link.Url ?? string.Empty;
+            var safe = url.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
+                       || url.StartsWith("https://", StringComparison.OrdinalIgnoreCase)
+                       || url.StartsWith("mailto:", StringComparison.OrdinalIgnoreCase)
+                       || url.StartsWith('#');
+            if (!safe && !link.IsImage) link.Url = "#";
+            if (link.IsImage && !(url.StartsWith("http://", StringComparison.OrdinalIgnoreCase) || url.StartsWith("https://", StringComparison.OrdinalIgnoreCase)))
+                link.Url = string.Empty;
+        }
+
+        using var writer = new StringWriter();
+        var renderer = new Markdig.Renderers.HtmlRenderer(writer);
+        Pipeline.Setup(renderer);
+        renderer.Render(document);
+        writer.Flush();
+        return writer.ToString();
+    }
+}
