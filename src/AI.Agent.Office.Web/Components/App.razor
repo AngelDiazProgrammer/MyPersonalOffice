@@ -16,11 +16,12 @@
     <Routes @rendermode="OfficeRenderMode" />
     <script src="_framework/blazor.web.js"></script>
     <script src="js/office.js"></script>
+    <script type="module" src="js/office3d.js"></script>
 </body>
 
 </html>
 
 @code {
-    // No prerender: the page talks to SignalR, so it should only initialize inside the live circuit.
+    // Sin prerenderizado: la página habla con SignalR, así que solo debe iniciarse dentro del circuito en vivo.
     private static readonly IComponentRenderMode OfficeRenderMode = new InteractiveServerRenderMode(prerender: false);
 }

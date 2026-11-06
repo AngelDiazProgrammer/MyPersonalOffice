@@ -10,11 +10,12 @@ using Microsoft.AspNetCore.Http.Features;
 
 namespace AI.Agent.Office.Api.Extensions;
 
+/// <summary>Registro y configuración del backend (servicios, CORS, controladores, SignalR y manejo de errores).</summary>
 public static class OfficeApiExtensions
 {
     public const string CorsPolicy = "LocalOnly";
 
-    /// <summary>Registers the whole backend (Application + Infrastructure + controllers + SignalR).</summary>
+    /// <summary>Registra todo el backend (aplicación, infraestructura, controladores y SignalR).</summary>
     public static IServiceCollection AddOfficeApi(this IServiceCollection services, IConfiguration configuration)
     {
         services.AddOfficeApplication(configuration);
@@ -43,6 +44,10 @@ public static class OfficeApiExtensions
         return services;
     }
 
+    /// <summary>
+    /// Configura el pipeline HTTP: manejo central de errores, CORS, controladores, el canal en tiempo
+    /// real y /health.
+    /// </summary>
     public static WebApplication UseOfficeApi(this WebApplication app)
     {
         app.UseMiddleware<ExceptionHandlingMiddleware>();
@@ -55,23 +60,30 @@ public static class OfficeApiExtensions
     }
 }
 
-/// <summary>Loads the agent Markdown files into the registry when the application starts.</summary>
+/// <summary>
+/// Al arrancar la aplicación carga los Markdown de los agentes y la base de conocimiento y avisa si
+/// falta la clave de Claude.
+/// </summary>
 public sealed class OfficeBootstrapper : IHostedService
 {
     private readonly IAgentCatalogService _catalog;
+    private readonly IKnowledgeBaseService _knowledge;
     private readonly IAnthropicService _anthropic;
     private readonly ILogger<OfficeBootstrapper> _logger;
 
-    public OfficeBootstrapper(IAgentCatalogService catalog, IAnthropicService anthropic, ILogger<OfficeBootstrapper> logger)
+    public OfficeBootstrapper(IAgentCatalogService catalog, IKnowledgeBaseService knowledge, IAnthropicService anthropic, ILogger<OfficeBootstrapper> logger)
     {
         _catalog = catalog;
+        _knowledge = knowledge;
         _anthropic = anthropic;
         _logger = logger;
     }
 
+    /// <summary>Carga agentes y base de conocimiento al iniciar (y avisa en el registro si falta la clave de Claude).</summary>
     public async Task StartAsync(CancellationToken cancellationToken)
     {
         await _catalog.ReloadAsync(cancellationToken);
+        await _knowledge.ReloadAsync(cancellationToken);
         if (!_anthropic.IsConfigured)
             _logger.LogWarning("ANTHROPIC_API_KEY no está configurada: la oficina arrancará pero no podrá llamar a Claude.");
     }

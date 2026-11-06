@@ -4,7 +4,7 @@ using Microsoft.Extensions.Logging;
 
 namespace AI.Agent.Office.Application.Agents;
 
-/// <summary>Loads Markdown definitions into the runtime registry (at startup and on demand).</summary>
+/// <summary>Carga las definiciones Markdown en el registro de agentes (al arrancar y bajo demanda).</summary>
 public sealed class AgentCatalogService : IAgentCatalogService
 {
     private readonly IAgentConfigurationService _configuration;
@@ -24,6 +24,7 @@ public sealed class AgentCatalogService : IAgentCatalogService
         _logger = logger;
     }
 
+    /// <summary>Relee los archivos Markdown de los agentes y devuelve el informe de validación.</summary>
     public async Task<ConfigurationReport> ReloadAsync(CancellationToken cancellationToken = default)
     {
         var report = await _configuration.ReloadAsync(cancellationToken).ConfigureAwait(false);

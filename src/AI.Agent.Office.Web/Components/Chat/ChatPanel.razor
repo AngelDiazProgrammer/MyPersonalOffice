@@ -1,3 +1,4 @@
+@* Panel del chat con el Orquestador: lista de mensajes, adjuntar PDF, dictado y envío (Enter envía, Shift+Enter nueva línea). *@
 @inherits OfficeComponentBase
 @inject IJSRuntime JS
 
@@ -13,10 +14,16 @@
         </span>
     </header>
 
-    @if (!Office.AnthropicConfigured)
+    @if (Office.Llm is { } llm && !llm.ClaudeConfigured && !llm.FreeProviders.Any(p => p.Configured))
     {
         <div class="banner banner-warn">
-            Falta <code>ANTHROPIC_API_KEY</code>. Crea el archivo <code>.env</code> (ver <code>.env.example</code>) y reinicia la aplicación.
+            No hay ninguna clave configurada. Añade <code>GROQ_API_KEY</code> (o <code>CLOUDFLARE_API_TOKEN</code> + <code>CLOUDFLARE_ACCOUNT_ID</code>) y/o <code>ANTHROPIC_API_KEY</code> en el archivo <code>.env</code> y reinicia.
+        </div>
+    }
+    else if (Office.Llm is { } info && !info.ClaudeConfigured && info.Mode != "ClaudeOnly")
+    {
+        <div class="banner banner-info">
+            Sin <code>ANTHROPIC_API_KEY</code>: solo se usarán las APIs gratuitas (@string.Join(", ", info.FreeProviders.Where(p => p.Configured).Select(p => p.Name))).
         </div>
     }
 

@@ -79,9 +79,24 @@ public class AnthropicServiceTests
         Assert.Equal("2023-06-01", message.Headers.GetValues("anthropic-version").Single());
         Assert.DoesNotContain(SecretKey, body);
         Assert.Contains("\"model\":\"claude-test\"", body);
-        Assert.Contains("\"system\":\"sistema\"", body);
+        Assert.Contains("\"text\":\"sistema\"", body);
+        Assert.Contains("\"cache_control\":{\"type\":\"ephemeral\"}", body); // system prompt is cacheable
         Assert.Equal(1, usage.GetSnapshot().Requests);
         Assert.Equal(19, usage.GetSnapshot().InputTokens + usage.GetSnapshot().OutputTokens);
+    }
+
+    [Fact]
+    public async Task Prompt_caching_can_be_disabled_and_cache_tokens_are_counted()
+    {
+        var (service, handler, usage) = Create(o => o.PromptCaching = false);
+        handler.Enqueue(HttpStatusCode.OK, """{"content":[{"type":"text","text":"x"}],"usage":{"input_tokens":10,"output_tokens":5,"cache_creation_input_tokens":100,"cache_read_input_tokens":200}}""");
+
+        var response = await service.SendAsync(Request());
+
+        Assert.DoesNotContain("cache_control", handler.Calls.Single().Body);
+        Assert.Contains("\"system\":\"sistema\"", handler.Calls.Single().Body);
+        Assert.Equal(310, response.InputTokens);
+        Assert.Equal(310, usage.GetSnapshot().InputTokens);
     }
 
     [Fact]
@@ -94,6 +109,45 @@ public class AnthropicServiceTests
 
         Assert.Contains("\"action\":\"respond\"", response.StructuredJson);
         Assert.Contains("\"tool_choice\":{\"type\":\"tool\",\"name\":\"submit_decision\"}", handler.Calls.Single().Body);
+    }
+
+    [Fact]
+    public async Task Models_that_deprecate_temperature_are_retried_without_it_and_remembered()
+    {
+        var (service, handler, _) = Create();
+        handler.Enqueue(HttpStatusCode.BadRequest, """{"error":{"message":"`temperature` is deprecated for this model."}}""")
+               .Enqueue(HttpStatusCode.OK, TextOk)
+               .Enqueue(HttpStatusCode.OK, TextOk);
+        var request = Request() with { Temperature = 0.2 };
+
+        var first = await service.SendAsync(request);
+        await service.SendAsync(request);
+
+        Assert.Equal("Hola mundo", first.Text);
+        Assert.Equal(3, handler.Calls.Count);
+        Assert.Contains("\"temperature\":0.2", handler.Calls[0].Body);
+        Assert.DoesNotContain("temperature", handler.Calls[1].Body);
+        Assert.DoesNotContain("temperature", handler.Calls[2].Body);   // remembered: no new attempt with it
+    }
+
+    [Fact]
+    public async Task Models_that_reject_forced_tool_choice_fall_back_to_auto_and_remember_it()
+    {
+        var (service, handler, _) = Create();
+        var spec = new StructuredOutputSpec("submit_decision", "d", """{"type":"object","properties":{}}""");
+        const string toolOk = """{"content":[{"type":"tool_use","name":"submit_decision","input":{"action":"respond","message":"ok"}}],"usage":{"input_tokens":1,"output_tokens":1}}""";
+        handler.Enqueue(HttpStatusCode.BadRequest, """{"error":{"message":"tool_choice: type \"tool\" and \"any\" are not supported for this model."}}""")
+               .Enqueue(HttpStatusCode.OK, toolOk)
+               .Enqueue(HttpStatusCode.OK, toolOk);
+
+        var first = await service.SendAsync(Request(spec));
+        await service.SendAsync(Request(spec));
+
+        Assert.Contains("\"action\":\"respond\"", first.StructuredJson);
+        Assert.Equal(3, handler.Calls.Count);
+        Assert.Contains("\"type\":\"tool\"", handler.Calls[0].Body);
+        Assert.Contains("\"tool_choice\":{\"type\":\"auto\"}", handler.Calls[1].Body);
+        Assert.Contains("\"tool_choice\":{\"type\":\"auto\"}", handler.Calls[2].Body); // remembered, no new forced attempt
     }
 
     [Fact]

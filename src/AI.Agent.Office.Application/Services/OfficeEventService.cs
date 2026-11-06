@@ -7,7 +7,7 @@ using Microsoft.Extensions.Logging;
 
 namespace AI.Agent.Office.Application.Services;
 
-/// <summary>Records every office event in the activity log and forwards it to the realtime publisher.</summary>
+/// <summary>Registra cada evento de la oficina en la bitácora y lo reenvía al canal en tiempo real.</summary>
 public sealed class OfficeEventService : IOfficeEventService
 {
     private readonly IActivityLog _activityLog;
@@ -21,6 +21,7 @@ public sealed class OfficeEventService : IOfficeEventService
         _logger = logger;
     }
 
+    /// <summary>Crea el evento, lo guarda en la bitácora y lo publica a los clientes conectados.</summary>
     public async Task<OfficeEvent> EmitAsync(
         OfficeEventType type,
         string description,
@@ -49,7 +50,7 @@ public sealed class OfficeEventService : IOfficeEventService
         }
         catch (Exception ex)
         {
-            // A failing realtime channel must never break the orchestration itself.
+            // Un canal en tiempo real caído nunca debe romper la orquestación.
             _logger.LogWarning(ex, "No se pudo publicar el evento {EventType}", type);
         }
 

@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.SignalR.Client;
 
 namespace AI.Agent.Office.Web.Hubs;
 
+/// <summary>Estado de la conexión en tiempo real.</summary>
 public enum ConnectionStatus
 {
     Disconnected,
@@ -13,7 +14,7 @@ public enum ConnectionStatus
     Reconnecting
 }
 
-/// <summary>SignalR client: subscribes to every office event type and forwards them to a single handler.</summary>
+/// <summary>Cliente SignalR: se suscribe a cada tipo de evento de la oficina y los reenvía a un único manejador.</summary>
 public sealed class OfficeHubClient : IAsyncDisposable
 {
     private readonly HubConnection _connection;
@@ -24,6 +25,7 @@ public sealed class OfficeHubClient : IAsyncDisposable
     public event Func<OfficeEventDto, Task>? EventReceived;
     public event Func<Task>? Reconnected;
 
+    /// <summary>Crea la conexión con reconexión automática y la suscripción a todos los eventos.</summary>
     public OfficeHubClient(string hubUrl)
     {
         _connection = new HubConnectionBuilder()
@@ -50,6 +52,7 @@ public sealed class OfficeHubClient : IAsyncDisposable
         _connection.Closed += _ => { SetStatus(ConnectionStatus.Disconnected); return Task.CompletedTask; };
     }
 
+    /// <summary>Abre la conexión.</summary>
     public async Task StartAsync(CancellationToken ct = default)
     {
         SetStatus(ConnectionStatus.Connecting);
@@ -65,6 +68,7 @@ public sealed class OfficeHubClient : IAsyncDisposable
         }
     }
 
+    /// <summary>Cambia el estado de conexión y avisa a los interesados.</summary>
     private void SetStatus(ConnectionStatus status)
     {
         Status = status;

@@ -429,3 +429,6 @@ FodyWeavers.xsd
 
 # Local secrets
 .env
+
+# Documentos Word generados
+generated-documents/

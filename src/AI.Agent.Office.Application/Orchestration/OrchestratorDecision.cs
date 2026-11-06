@@ -3,13 +3,14 @@ using System.Text.Json.Serialization;
 
 namespace AI.Agent.Office.Application.Orchestration;
 
+/// <summary>Acciones posibles de una decisión del Orquestador.</summary>
 public static class DecisionActions
 {
     public const string Respond = "respond";
     public const string Delegate = "delegate";
 }
 
-/// <summary>Structured decision returned by the Orchestrator through a forced tool call.</summary>
+/// <summary>Decisión estructurada que devuelve el Orquestador mediante una llamada a herramienta forzada.</summary>
 public sealed class OrchestratorDecision
 {
     public string Action { get; set; } = string.Empty;
@@ -22,6 +23,7 @@ public sealed class OrchestratorDecision
         ReadCommentHandling = JsonCommentHandling.Skip
     };
 
+    /// <summary>Lee el JSON de una decisión; devuelve null si no es válido.</summary>
     public static OrchestratorDecision? Parse(string json)
     {
         try { return JsonSerializer.Deserialize<OrchestratorDecision>(json, JsonOptions); }
@@ -29,6 +31,7 @@ public sealed class OrchestratorDecision
     }
 }
 
+/// <summary>Una tarea del plan: qué agente la hace, qué debe hacer y de qué otras tareas depende.</summary>
 public sealed class PlannedTask
 {
     public string Id { get; set; } = string.Empty;
@@ -40,4 +43,13 @@ public sealed class PlannedTask
 
     public List<string> DependsOn { get; set; } = new();
     public bool? IncludeDocuments { get; set; }
+
+    /// <summary>La fija el sistema (no el modelo) en los flujos fijos.</summary>
+    [JsonIgnore] public string? ExtraContext { get; set; }
+
+    /// <summary>El flujo genera los documentos finales por sí mismo: se omite el Word automático de esta tarea.</summary>
+    [JsonIgnore] public bool SkipDocument { get; set; }
+
+    [JsonIgnore] public bool AllowFreeDocuments { get; set; }
+    [JsonIgnore] public bool Sensitive { get; set; }
 }

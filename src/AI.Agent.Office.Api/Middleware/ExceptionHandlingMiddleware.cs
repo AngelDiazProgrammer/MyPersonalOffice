@@ -3,7 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace AI.Agent.Office.Api.Middleware;
 
-/// <summary>Centralized error handling: users get safe messages, never stack traces.</summary>
+/// <summary>Manejo central de errores: la persona recibe mensajes seguros, nunca trazas de la pila.</summary>
 public sealed class ExceptionHandlingMiddleware
 {
     private readonly RequestDelegate _next;
@@ -15,6 +15,10 @@ public sealed class ExceptionHandlingMiddleware
         _logger = logger;
     }
 
+    /// <summary>
+    /// Ejecuta la petición y traduce las excepciones (validación, petición mal formada, error inesperado)
+    /// en respuestas JSON seguras.
+    /// </summary>
     public async Task InvokeAsync(HttpContext context)
     {
         try
@@ -41,6 +45,7 @@ public sealed class ExceptionHandlingMiddleware
         }
     }
 
+    /// <summary>Escribe la respuesta de error con su código, título y lista de problemas.</summary>
     private static Task WriteAsync(HttpContext context, int status, string title, string detail, IEnumerable<string>? errors)
     {
         if (context.Response.HasStarted) return Task.CompletedTask;

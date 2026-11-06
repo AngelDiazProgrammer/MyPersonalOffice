@@ -7,6 +7,7 @@ using Microsoft.Extensions.Options;
 
 namespace AI.Agent.Office.Application.Services;
 
+/// <summary>Recibe un PDF subido: lo valida, extrae su texto y lo guarda en memoria (el archivo no se conserva).</summary>
 public sealed class DocumentService : IDocumentService
 {
     private readonly IDocumentTextExtractor _extractor;
@@ -23,6 +24,7 @@ public sealed class DocumentService : IDocumentService
         _logger = logger;
     }
 
+    /// <summary>Valida el archivo (extensión, tipo, firma y tamaño), extrae el texto y devuelve sus datos.</summary>
     public async Task<DocumentDto> UploadAsync(
         Stream content, string fileName, string? contentType, long length, CancellationToken cancellationToken)
     {

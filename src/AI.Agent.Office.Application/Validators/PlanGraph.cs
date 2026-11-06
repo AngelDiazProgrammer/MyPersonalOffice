@@ -1,10 +1,11 @@
 namespace AI.Agent.Office.Application.Validators;
 
+/// <summary>Utilidades sobre el grafo de dependencias de un plan.</summary>
 public static class PlanGraph
 {
     /// <summary>
-    /// Kahn topological order (dependencies first). Returns null when a dependency is unknown,
-    /// a key is duplicated or the graph contains a cycle.
+    /// Orden topológico (algoritmo de Kahn): las dependencias primero. Devuelve null si una dependencia no
+    /// existe, una clave se repite o hay un ciclo.
     /// </summary>
     public static IReadOnlyList<T>? TopologicalOrder<T>(
         IReadOnlyList<T> items,

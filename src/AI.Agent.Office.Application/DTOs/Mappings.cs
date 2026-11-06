@@ -6,6 +6,10 @@ using AI.Agent.Office.Domain.Entities;
 using AI.Agent.Office.Domain.Events;
 using Agent = AI.Agent.Office.Domain.Entities.Agent;
 
+/// <summary>
+/// Conversiones entre las entidades del dominio y los objetos de transferencia (DTO) que viajan a la
+/// API y a la interfaz.
+/// </summary>
 public static class Mappings
 {
     public static AgentDto ToDto(this Agent a) => new(
@@ -14,7 +18,7 @@ public static class Mappings
 
     public static AgentTaskDto ToDto(this AgentTask t) => new(
         t.Id, t.ConversationId, t.AgentId, t.Key, t.Title, t.Description, t.Status, t.CreatedAt,
-        t.StartedAt, t.CompletedAt, t.Result, t.ErrorMessage, t.DependsOn);
+        t.StartedAt, t.CompletedAt, t.Result, t.ErrorMessage, t.DependsOn, t.DocumentId, t.DocumentName, t.Provider);
 
     public static ChatMessageDto ToDto(this ChatMessage m) => new(m.Id, m.Role, m.Content, m.CreatedAt);
 

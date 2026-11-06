@@ -1,3 +1,7 @@
+@* Un mensaje del chat: texto en Markdown, tareas delegadas, opciones de solución (botones y campo para la propia), documentos generados y botones para exportar a Word o PDF. *@
+@inject OfficeStateService Office
+@inject IJSRuntime JS
+
 <div class="msg msg-@(Item.Role == ChatRole.User ? "user" : "assistant") @(Item.IsError ? "msg-error" : string.Empty)">
     <div class="msg-meta">
         <span>@(Item.Role == ChatRole.User ? "Tú" : "Orquestador")</span>
@@ -14,9 +18,101 @@
     else
     {
         <MarkdownView Content="@Item.Content" />
+
+        @if (Item.Choice is { } choice && IsLatest && !Office.IsSending)
+        {
+            <div class="choice-box">
+                <div class="choice-options">
+                    @foreach (var option in choice.Options)
+                    {
+                        <button type="button" class="choice-btn @(option.Recommended ? "choice-rec" : string.Empty)" title="@option.Summary"
+                                @onclick="() => ChooseAsync(option)">
+                            <b>@option.Id</b> <span>@option.Title</span>@(option.Recommended ? " ⭐" : string.Empty)
+                        </button>
+                    }
+                </div>
+                <div class="choice-custom">
+                    <textarea rows="2" placeholder="¿Tienes otra solución? Escríbela aquí y la reviso contra la base…" @bind="_custom" @bind:event="oninput"></textarea>
+                    <div class="choice-actions">
+                        <button type="button" class="link-btn" disabled="@(_custom.Trim().Length < 20)" @onclick="SendCustomAsync">✍️ Usar mi solución</button>
+                        <button type="button" class="link-btn" @onclick="CancelCaseAsync">✖ Cancelar caso</button>
+                    </div>
+                </div>
+            </div>
+        }
+
+        @if (Item.Documents is { Count: > 0 })
+        {
+            <div class="doc-chips">
+                @foreach (var doc in Item.Documents)
+                {
+                    <a class="doc-chip" href="@Office.DownloadUrl(doc.Id)" download="@doc.FileName" title="Descargar @doc.FileName">@(doc.FileName.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase) ? "📕" : "📝") @doc.FileName ⬇</a>
+                }
+            </div>
+        }
+        else if (!Item.IsError && Item.Content.Length > 80)
+        {
+            <button type="button" class="link-btn export-btn" disabled="@_exporting" @onclick="() => ExportAsync(false)">
+                @(_exporting ? "Generando…" : "📄 Exportar a Word")
+            </button>
+            <button type="button" class="link-btn export-btn" disabled="@_exporting" @onclick="() => ExportAsync(true)">
+                @(_exporting ? "Generando…" : "📕 Exportar a PDF")
+            </button>
+            @if (_error is not null)
+            {
+                <span class="task-error">@_error</span>
+            }
+        }
     }
 </div>
 
 @code {
+    private string _custom = string.Empty;
+
+    /// <summary>Las opciones solo se ofrecen en el último mensaje de la conversación.</summary>
+    private bool IsLatest => Office.Messages.Count > 0 && ReferenceEquals(Office.Messages[^1], Item);
+
+    private Task ChooseAsync(SolutionOptionDto option) => Office.SendAsync("Opción " + option.Id + " · " + option.Title, option.Id);
+
+    private Task CancelCaseAsync() => Office.SendAsync("Cancelar", "cancel");
+
+    private async Task SendCustomAsync()
+    {
+        var text = _custom.Trim();
+        _custom = string.Empty;
+        await Office.SendAsync(text);
+    }
+
+    private bool _exporting;
+    private string? _error;
+
     [Parameter, EditorRequired] public ChatItem Item { get; set; } = default!;
+
+    // El flujo de la base de conocimiento firma sus respuestas con el formato usado: si menciona APA, se exporta en APA.
+    private string? StyleHint => Item.Content.Contains("🧾 Formato:", StringComparison.Ordinal) &&
+                                 Item.Content[Item.Content.IndexOf("🧾 Formato:", StringComparison.Ordinal)..].Contains("apa", StringComparison.OrdinalIgnoreCase)
+        ? "apa" : null;
+
+    private async Task ExportAsync(bool pdf)
+    {
+        _exporting = true;
+        _error = null;
+        try
+        {
+            var title = Item.Content.Split('\n').FirstOrDefault(l => !string.IsNullOrWhiteSpace(l))?.Trim('#', ' ', '*') ?? "Documento";
+            var shortTitle = title.Length > 80 ? title[..80] : title;
+            var doc = pdf
+                ? await Office.ExportToPdfAsync(shortTitle, Item.Content, StyleHint)
+                : await Office.ExportToWordAsync(shortTitle, Item.Content, StyleHint);
+            await JS.InvokeVoidAsync("officeUi.download", Office.DownloadUrl(doc.Id));
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _exporting = false;
+        }
+    }
 }

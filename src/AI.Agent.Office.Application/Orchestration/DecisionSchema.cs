@@ -3,10 +3,13 @@ using AI.Agent.Office.Application.Interfaces;
 
 namespace AI.Agent.Office.Application.Orchestration;
 
+/// <summary>Esquema JSON de la decisión del Orquestador (responder o delegar con una lista de tareas).</summary>
 public static class DecisionSchema
 {
+    /// <summary>Nombre de la herramienta que el modelo debe invocar para entregar su decisión.</summary>
     public const string ToolName = "submit_decision";
 
+    /// <summary>Arma el esquema con los agentes delegables y el máximo de tareas.</summary>
     public static StructuredOutputSpec Build(IEnumerable<string> delegableAgentIds, int maxTasks)
     {
         using var stream = new MemoryStream();

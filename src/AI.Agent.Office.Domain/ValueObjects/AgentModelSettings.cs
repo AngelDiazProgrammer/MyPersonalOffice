@@ -1,4 +1,6 @@
 namespace AI.Agent.Office.Domain.ValueObjects;
 
-/// <summary>Per-agent model configuration. Null values mean "use the global default".</summary>
-public sealed record AgentModelSettings(string? Model = null, int? MaxTokens = null, double? Temperature = null);
+/// <summary>"claude" usa siempre Claude para este agente; null o "auto" sigue el modo global.</summary>
+public sealed record AgentModelSettings(
+    string? Model = null, int? MaxTokens = null, double? Temperature = null,
+    string? Provider = null, string? FreeModel = null);

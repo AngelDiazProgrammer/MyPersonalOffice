@@ -1,6 +1,6 @@
 namespace AI.Agent.Office.Domain.Entities;
 
-/// <summary>Text extracted from an uploaded document. Kept in memory only.</summary>
+/// <summary>Texto extraído de un documento subido. Solo se guarda en memoria.</summary>
 public sealed class OfficeDocument
 {
     public Guid Id { get; init; } = Guid.NewGuid();

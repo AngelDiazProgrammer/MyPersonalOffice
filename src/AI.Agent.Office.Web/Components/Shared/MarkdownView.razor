@@ -1,3 +1,4 @@
+@* Muestra texto Markdown de forma segura (sin HTML crudo y solo con enlaces permitidos). *@
 @using Markdig
 @using Markdig.Syntax
 @using Markdig.Syntax.Inlines
@@ -5,7 +6,7 @@
 <div class="markdown">@((MarkupString)_html)</div>
 
 @code {
-    // Raw HTML in the source is disabled, and only safe link schemes are kept.
+    // El HTML crudo del texto está desactivado y solo se conservan los esquemas de enlace seguros.
     private static readonly MarkdownPipeline Pipeline = new MarkdownPipelineBuilder()
         .UseAdvancedExtensions()
         .DisableHtml()

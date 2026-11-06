@@ -5,12 +5,13 @@ namespace AI.Agent.Office.Application.Agents;
 
 using Agent = AI.Agent.Office.Domain.Entities.Agent;
 
-/// <summary>Thread-safe, in-memory registry of the logical agents.</summary>
+/// <summary>Registro en memoria (seguro entre hilos) de los agentes lógicos y su estado en tiempo de ejecución.</summary>
 public sealed class AgentRegistry : IAgentRegistry
 {
     private readonly object _gate = new();
     private readonly List<Agent> _agents = new();
 
+    /// <summary>Carga o recarga los agentes desde sus definiciones.</summary>
     public void Load(IEnumerable<AgentDefinition> definitions)
     {
         lock (_gate)
@@ -32,9 +33,11 @@ public sealed class AgentRegistry : IAgentRegistry
                     WorkingStatus = d.WorkingStatus,
                     IsOrchestrator = d.IsOrchestrator,
                     AcceptsDocuments = d.AcceptsDocuments,
+                    ProducesWord = d.ProducesWord,
+                    WorkflowOnly = d.WorkflowOnly,
                     Color = d.Color,
                     Icon = d.Icon,
-                    // Runtime state survives a configuration reload.
+                    // El estado en ejecución se conserva al recargar la configuración.
                     Status = existing?.Status ?? AgentStatus.Idle,
                     CurrentTaskId = existing?.CurrentTaskId,
                     CurrentTaskTitle = existing?.CurrentTaskTitle,
@@ -44,16 +47,19 @@ public sealed class AgentRegistry : IAgentRegistry
         }
     }
 
+    /// <summary>Todos los agentes registrados.</summary>
     public IReadOnlyList<Agent> GetAll()
     {
         lock (_gate) { return _agents.Select(a => a.Clone()).ToArray(); }
     }
 
+    /// <summary>Busca un agente por su id.</summary>
     public Agent? Get(string agentId)
     {
         lock (_gate) { return Find(agentId)?.Clone(); }
     }
 
+    /// <summary>Aplica un cambio al agente de forma atómica y lo devuelve.</summary>
     public Agent? Update(string agentId, Action<Agent> mutation)
     {
         lock (_gate)

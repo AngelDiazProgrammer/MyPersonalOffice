@@ -1,6 +1,9 @@
 namespace AI.Agent.Office.Application.Interfaces;
 
-/// <summary>Single entry point to Claude. The API key never leaves the implementation.</summary>
+/// <summary>
+/// Punto único de entrada a los modelos (Claude y APIs gratuitas). La clave de la API nunca sale de la
+/// implementación.
+/// </summary>
 public interface IAnthropicService
 {
     bool IsConfigured { get; }

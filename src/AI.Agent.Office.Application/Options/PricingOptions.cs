@@ -1,13 +1,16 @@
 namespace AI.Agent.Office.Application.Options;
 
 /// <summary>
-/// Optional USD price per million tokens, used only to show an ESTIMATED cost. Leave at 0 to hide it.
-/// Take the values from the official Anthropic pricing page for the model you use.
+/// Precio opcional en USD por millón de tokens, usado solo para mostrar un costo ESTIMADO. Déjalo en 0
+/// para ocultarlo. Toma los valores de la página oficial de precios de Anthropic para el modelo que
+/// uses.
 /// </summary>
 public sealed class PricingOptions
 {
     public const string SectionName = "Pricing";
 
+    /// <summary>USD por millón de tokens de entrada.</summary>
     public decimal InputPerMillionTokens { get; set; }
+    /// <summary>USD por millón de tokens de salida.</summary>
     public decimal OutputPerMillionTokens { get; set; }
 }

@@ -7,8 +7,8 @@ using Microsoft.Extensions.Options;
 var builder = WebApplication.CreateBuilder(args);
 builder.Configuration.AddOfficeConfiguration();
 
-// By default the Web host also hosts the API in-process, so a single command runs everything.
-// Set Office:HostApi=false and Api:BaseUrl to consume a separately running AI.Agent.Office.Api instead.
+// Por defecto el host Web también aloja la API en el mismo proceso, así un solo comando ejecuta todo.
+// Con Office:HostApi=false y Api:BaseUrl se consume en su lugar una AI.Agent.Office.Api que corra por separado.
 var hostApi = builder.Configuration.GetValue("Office:HostApi", true);
 if (hostApi) builder.Services.AddOfficeApi(builder.Configuration);
 

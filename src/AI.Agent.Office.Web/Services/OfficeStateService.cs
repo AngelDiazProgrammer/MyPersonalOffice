@@ -6,19 +6,31 @@ using Microsoft.Extensions.Options;
 
 namespace AI.Agent.Office.Web.Services;
 
+#region Tipos auxiliares
+
+/// <summary>Dirección de la API que consume la interfaz (sección "Api").</summary>
 public sealed class WebApiOptions
 {
     public const string SectionName = "Api";
     public string BaseUrl { get; set; } = "http://localhost:5080";
 }
 
-public sealed record ChatItem(ChatRole Role, string Content, DateTimeOffset Time, bool IsError = false, string? PlanMessage = null, int TaskCount = 0);
+/// <summary>Un mensaje mostrado en el chat, con sus tareas, documentos y opciones de solución.</summary>
+public sealed record ChatItem(
+    ChatRole Role, string Content, DateTimeOffset Time, bool IsError = false, string? PlanMessage = null,
+    int TaskCount = 0, IReadOnlyList<GeneratedDocumentDto>? Documents = null,
+    KnowledgeChoiceDto? Choice = null);
 
+/// <summary>Un PDF adjunto al próximo mensaje.</summary>
 public sealed record AttachedDocument(Guid Id, string FileName, int PageCount, bool RequiresOcr);
 
+#endregion
+
+#region Estado de la oficina para una conexión
+
 /// <summary>
-/// Client-side view model of the office for one browser circuit. Visual state is only changed by
-/// real events coming from SignalR (plus the initial snapshot), never by the components themselves.
+/// Modelo de vista de la oficina para una conexión del navegador. El estado visual solo cambia por
+/// eventos reales de SignalR (más la foto inicial), nunca por los componentes.
 /// </summary>
 public sealed class OfficeStateService : IAsyncDisposable
 {
@@ -39,6 +51,7 @@ public sealed class OfficeStateService : IAsyncDisposable
     private CancellationTokenSource? _sendCts;
     private bool _initialized;
 
+    /// <summary>Crea el servicio con el cliente de la API y la configuración.</summary>
     public OfficeStateService(OfficeApiClient api, IOptions<WebApiOptions> options, ILogger<OfficeStateService> logger)
     {
         _api = api;
@@ -48,11 +61,20 @@ public sealed class OfficeStateService : IAsyncDisposable
 
     public event Action? Changed;
 
+    /// <summary>Eventos de la oficina sin procesar, reenviados a la escena 3D para que los personajes reaccionen.</summary>
+    public event Func<OfficeEventDto, Task>? EventForwarded;
+
     public ConnectionStatus Connection => _hub?.Status ?? ConnectionStatus.Disconnected;
     public Guid? ConversationId { get; private set; }
     public bool IsSending { get; private set; }
     public bool AnthropicConfigured { get; private set; } = true;
-    public TokenUsageDto Usage { get; private set; } = new(0, 0, 0, Array.Empty<AgentUsageDto>(), null);
+    public TokenUsageDto Usage { get; private set; } = new(0, 0, 0, Array.Empty<AgentUsageDto>(), null, 0, 0, 0);
+    public LlmStatusDto? Llm { get; private set; }
+    public WorkspacesDto? Workspaces { get; private set; }
+    /// <summary>La persona debe elegir una oficina antes de usar la app.</summary>
+    public bool WorkspaceRequired => Workspaces?.Required == true;
+    /// <summary>Oficina abierta, o null.</summary>
+    public WorkspaceDto? ActiveWorkspace => Workspaces?.Available.FirstOrDefault(w => w.Id == Workspaces.ActiveId);
     public string? LastError { get; private set; }
     public bool IsUploading { get; private set; }
 
@@ -62,23 +84,33 @@ public sealed class OfficeStateService : IAsyncDisposable
     public IReadOnlyList<ChatItem> Messages { get { lock (_gate) { return _messages.ToArray(); } } }
     public IReadOnlyList<AttachedDocument> Attachments { get { lock (_gate) { return _attachments.ToArray(); } } }
 
+    /// <summary>El agente orquestador.</summary>
     public AgentDto? Orchestrator => Agents.FirstOrDefault(a => a.IsOrchestrator);
 
+    /// <summary>Especialistas que están trabajando ahora.</summary>
     public IReadOnlyList<AgentDto> ActiveAgents => Agents
         .Where(a => !a.IsOrchestrator && a.Status is not (AgentStatus.Idle or AgentStatus.Completed or AgentStatus.Error))
         .ToArray();
 
+    /// <summary>Contador que sube cada vez que se asigna una tarea al agente (lo usa la escena para animar).</summary>
     public int AssignmentVersion(string agentId)
     {
         lock (_gate) { return _assignmentVersions.GetValueOrDefault(agentId); }
     }
 
+#endregion
+
+    #region Arranque
+
+    /// <summary>Carga oficinas, estado y proveedores y abre la conexión en tiempo real (una sola vez).</summary>
     public async Task InitializeAsync()
     {
         if (_initialized) return;
         _initialized = true;
 
+        await RefreshWorkspacesAsync();
         await RefreshSnapshotAsync();
+        await RefreshLlmAsync();
 
         _hub = new OfficeHubClient($"{_options.BaseUrl.TrimEnd('/')}/hubs/office");
         _hub.EventReceived += OnEventAsync;
@@ -95,6 +127,65 @@ public sealed class OfficeStateService : IAsyncDisposable
         NotifyChanged();
     }
 
+    #endregion
+
+    #region Oficinas
+
+    /// <summary>Vuelve a leer qué oficinas hay y cuál está abierta.</summary>
+    public async Task RefreshWorkspacesAsync()
+    {
+        try { Workspaces = await _api.GetWorkspacesAsync(); }
+        catch (Exception ex) { _logger.LogWarning(ex, "No se pudo leer las oficinas"); }
+        NotifyChanged();
+    }
+
+    /// <summary>Abre una oficina, limpia la conversación y recarga el estado.</summary>
+    public async Task SelectWorkspaceAsync(string id)
+    {
+        try
+        {
+            Workspaces = await _api.SelectWorkspaceAsync(id);
+            ResetConversation();
+            await RefreshSnapshotAsync();
+            await RefreshLlmAsync();
+        }
+        catch (Exception ex) { LastError = ex.Message; }
+        NotifyChanged();
+    }
+
+    /// <summary>Vuelve a la pantalla de selección de oficina y limpia la conversación.</summary>
+    public async Task ChangeWorkspaceAsync()
+    {
+        try
+        {
+            Workspaces = await _api.ResetWorkspaceAsync();
+            ResetConversation();
+            await RefreshSnapshotAsync();
+        }
+        catch (Exception ex) { LastError = ex.Message; }
+        NotifyChanged();
+    }
+
+    /// <summary>Descarta mensajes, adjuntos, tareas y actividad de la conversación actual.</summary>
+    private void ResetConversation()
+    {
+        _sendCts?.Cancel();
+        lock (_gate)
+        {
+            _messages.Clear();
+            _attachments.Clear();
+            _tasks.Clear();
+            _activity.Clear();
+        }
+        ConversationId = null;
+        IsSending = false;
+    }
+
+    #endregion
+
+    #region Foto del estado y eventos en tiempo real
+
+    /// <summary>Recarga agentes, tareas, actividad y consumo desde la API.</summary>
     public async Task RefreshSnapshotAsync()
     {
         try
@@ -124,11 +215,17 @@ public sealed class OfficeStateService : IAsyncDisposable
         NotifyChanged();
     }
 
+    /// <summary>
+    /// Aplica un evento real: actualiza el estado del agente, la actividad y reenvía el evento a la escena
+    /// 3D.
+    /// </summary>
     private async Task OnEventAsync(OfficeEventDto e)
     {
         lock (_gate)
         {
-            _activity.Insert(0, new OfficeActivityDto(e.EventId, e.AgentId, e.TaskId, e.EventType, e.Description, e.Timestamp));
+            // Una recarga puede ya contener este evento (las claves de la lista de actividad deben ser únicas).
+            if (!_activity.Any(x => x.Id == e.EventId))
+                _activity.Insert(0, new OfficeActivityDto(e.EventId, e.AgentId, e.TaskId, e.EventType, e.Description, e.Timestamp));
             if (_activity.Count > MaxActivity) _activity.RemoveRange(MaxActivity, _activity.Count - MaxActivity);
 
             if (e.AgentId is not null && e.AdditionalData is { } data &&
@@ -153,15 +250,57 @@ public sealed class OfficeStateService : IAsyncDisposable
                 _assignmentVersions[e.AgentId] = _assignmentVersions.GetValueOrDefault(e.AgentId) + 1;
         }
 
+        if (EventForwarded is { } forward) await forward(e);
         NotifyChanged();
 
         if (e.EventType is OfficeEventType.AgentCompleted or OfficeEventType.AgentError or OfficeEventType.OrchestrationCompleted)
             await RefreshUsageAsync();
+        if (e.EventType == OfficeEventType.OrchestrationCompleted) _ = RefreshLlmAsync();
+
+        // Otra pestaña (o la API) abrió o cerró una oficina: se la sigue.
+        if (e.EventType == OfficeEventType.WorkspaceChanged)
+        {
+            await RefreshWorkspacesAsync();
+            await RefreshSnapshotAsync();
+        }
 
         if (e.EventType is OfficeEventType.TaskCreated or OfficeEventType.TaskCompleted or OfficeEventType.OrchestrationCompleted)
             await RefreshTasksAsync();
     }
 
+    #endregion
+
+    #region Modelos, consumo y tareas
+
+    /// <summary>Recarga el modo de enrutamiento y el estado de los proveedores.</summary>
+    public async Task RefreshLlmAsync()
+    {
+        try
+        {
+            Llm = await _api.GetLlmStatusAsync();
+            NotifyChanged();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "No se pudo leer el estado del modelo local");
+        }
+    }
+
+    /// <summary>Cambia el modo de enrutamiento (gratis primero, solo Claude, solo gratis).</summary>
+    public async Task SetModeAsync(string mode)
+    {
+        try
+        {
+            Llm = await _api.SetLlmModeAsync(mode);
+        }
+        catch (Exception ex)
+        {
+            LastError = ex.Message;
+        }
+        NotifyChanged();
+    }
+
+    /// <summary>Recarga el consumo de tokens.</summary>
     private async Task RefreshUsageAsync()
     {
         try
@@ -178,6 +317,7 @@ public sealed class OfficeStateService : IAsyncDisposable
         }
     }
 
+    /// <summary>Recarga la lista de tareas.</summary>
     private async Task RefreshTasksAsync()
     {
         if (!await _taskRefresh.WaitAsync(0)) return; // a refresh is already running; it will pick up the latest state
@@ -202,7 +342,12 @@ public sealed class OfficeStateService : IAsyncDisposable
         }
     }
 
-    public async Task SendAsync(string text)
+    #endregion
+
+    #region Chat y exportación
+
+    /// <summary>Envía un mensaje; <paramref name="choiceId"/> es la solución elegida con un botón ("cancel" cierra el caso).</summary>
+    public async Task SendAsync(string text, string? choiceId = null)
     {
         text = text.Trim();
         if (text.Length == 0 || IsSending) return;
@@ -225,12 +370,12 @@ public sealed class OfficeStateService : IAsyncDisposable
 
         try
         {
-            var response = await _api.SendChatAsync(new ChatRequestDto(text, ConversationId, documentIds), _sendCts.Token);
+            var response = await _api.SendChatAsync(new ChatRequestDto(text, ConversationId, documentIds, choiceId), _sendCts.Token);
             ConversationId = response.ConversationId;
             lock (_gate)
             {
                 _messages.Add(new ChatItem(ChatRole.Assistant, response.Reply, DateTimeOffset.Now,
-                    response.IsError, response.PlanMessage, response.Tasks.Count));
+                    response.IsError, response.PlanMessage, response.Tasks.Count, response.Documents, response.Choice));
             }
         }
         catch (OperationCanceledException)
@@ -252,13 +397,29 @@ public sealed class OfficeStateService : IAsyncDisposable
         _ = RefreshTasksAsync();
     }
 
+    /// <summary>Cancela la solicitud en curso.</summary>
     public async Task CancelCurrentAsync()
     {
         if (ConversationId is { } id) await _api.CancelConversationAsync(id);
     }
 
+    /// <summary>Cancela una tarea concreta.</summary>
     public Task CancelTaskAsync(Guid taskId) => _api.CancelTaskAsync(taskId);
 
+    /// <summary>Exporta un Markdown a Word.</summary>
+    public Task<GeneratedDocumentDto> ExportToWordAsync(string title, string markdown, string? style = null) => _api.ExportWordAsync(title, markdown, style);
+
+    /// <summary>Exporta un Markdown a PDF.</summary>
+    public Task<GeneratedDocumentDto> ExportToPdfAsync(string title, string markdown, string? style = null) => _api.ExportPdfAsync(title, markdown, style);
+
+    /// <summary>Dirección de descarga de un documento generado.</summary>
+    public string DownloadUrl(Guid documentId) => _api.DownloadUrl(documentId);
+
+    #endregion
+
+    #region Documentos adjuntos y cierre
+
+    /// <summary>Sube un PDF y lo deja adjunto al próximo mensaje.</summary>
     public async Task AttachAsync(Stream content, string fileName, string contentType)
     {
         IsUploading = true;
@@ -280,17 +441,22 @@ public sealed class OfficeStateService : IAsyncDisposable
         }
     }
 
+    /// <summary>Quita un adjunto antes de enviarlo.</summary>
     public void RemoveAttachment(Guid id)
     {
         lock (_gate) { _attachments.RemoveAll(a => a.Id == id); }
         NotifyChanged();
     }
 
+    /// <summary>Avisa a los componentes que el estado cambió.</summary>
     private void NotifyChanged() => Changed?.Invoke();
 
+    /// <summary>Cierra la conexión en tiempo real y cancela lo pendiente.</summary>
     public async ValueTask DisposeAsync()
     {
         _sendCts?.Cancel();
         if (_hub is not null) await _hub.DisposeAsync();
     }
+    #endregion
+
 }

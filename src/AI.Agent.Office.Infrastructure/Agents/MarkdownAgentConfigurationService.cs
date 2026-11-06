@@ -11,8 +11,9 @@ using Microsoft.Extensions.Options;
 namespace AI.Agent.Office.Infrastructure.Agents;
 
 /// <summary>
-/// Reads agent roles from Markdown files. Optional YAML-like front matter (between --- lines) carries metadata;
-/// the body is the system prompt. New agents are added by registering a file, never by writing C#.
+/// Lee los roles de los agentes desde archivos Markdown. Un encabezado opcional tipo YAML (entre líneas
+/// ---) trae los metadatos y el cuerpo es el prompt del sistema. Los agentes nuevos se agregan
+/// registrando un archivo, nunca escribiendo C#.
 /// </summary>
 public sealed partial class MarkdownAgentConfigurationService : IAgentConfigurationService
 {
@@ -21,21 +22,30 @@ public sealed partial class MarkdownAgentConfigurationService : IAgentConfigurat
     private readonly SemaphoreSlim _reloadGate = new(1, 1);
     private volatile ConfigurationReport _current = new(Array.Empty<AgentDefinition>(), Array.Empty<ConfigurationIssue>());
 
+    /// <summary>Crea el servicio con la carpeta y el registro de agentes configurados.</summary>
     public MarkdownAgentConfigurationService(IOptions<AgentsOptions> options, ILogger<MarkdownAgentConfigurationService> logger)
     {
         _options = options.Value;
         _logger = logger;
     }
 
+    /// <summary>Definiciones de todos los agentes cargados.</summary>
     public IReadOnlyList<AgentDefinition> GetDefinitions() => _current.Agents;
 
+    /// <summary>Definición de un agente por su id.</summary>
     public AgentDefinition? GetDefinition(string agentId) =>
         _current.Agents.FirstOrDefault(a => string.Equals(a.Id, agentId, StringComparison.OrdinalIgnoreCase));
 
+    /// <summary>Instrucciones (prompt) de un agente por su id.</summary>
     public string? GetInstructions(string agentId) => GetDefinition(agentId)?.Instructions;
 
+    /// <summary>Último informe de validación.</summary>
     public ConfigurationReport Validate() => _current;
 
+    /// <summary>
+    /// Relee los archivos, valida cada agente (orquestador único, ids válidos, sin duplicados) y actualiza
+    /// la configuración.
+    /// </summary>
     public async Task<ConfigurationReport> ReloadAsync(CancellationToken cancellationToken = default)
     {
         await _reloadGate.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -79,6 +89,7 @@ public sealed partial class MarkdownAgentConfigurationService : IAgentConfigurat
         }
     }
 
+    /// <summary>Agentes a cargar: los registrados en la configuración o, si no hay, todos los .md de la carpeta.</summary>
     private IEnumerable<AgentRegistration> ResolveRegistrations(string directory)
     {
         if (_options.Definitions.Count > 0) return _options.Definitions;
@@ -88,6 +99,7 @@ public sealed partial class MarkdownAgentConfigurationService : IAgentConfigurat
             .Select(f => new AgentRegistration { Id = Path.GetFileNameWithoutExtension(f), File = Path.GetFileName(f) });
     }
 
+    /// <summary>Carga y valida un archivo de agente; devuelve null si es inválido.</summary>
     private async Task<AgentDefinition?> LoadOneAsync(
         string directory, AgentRegistration registration, List<ConfigurationIssue> issues, CancellationToken ct)
     {
@@ -129,14 +141,19 @@ public sealed partial class MarkdownAgentConfigurationService : IAgentConfigurat
             new AgentModelSettings(
                 meta.GetValueOrDefault("model"),
                 int.TryParse(meta.GetValueOrDefault("maxTokens"), out var mt) ? mt : null,
-                double.TryParse(meta.GetValueOrDefault("temperature"), NumberStyles.Float, CultureInfo.InvariantCulture, out var t) ? t : null),
+                double.TryParse(meta.GetValueOrDefault("temperature"), NumberStyles.Float, CultureInfo.InvariantCulture, out var t) ? t : null,
+                meta.GetValueOrDefault("provider"),
+                meta.GetValueOrDefault("freeModel")),
             workingStatus,
             isOrchestrator,
             ParseBool(meta.GetValueOrDefault("acceptsDocuments")),
             meta.GetValueOrDefault("color") ?? "#8b5cf6",
-            meta.GetValueOrDefault("icon") ?? "🤖");
+            meta.GetValueOrDefault("icon") ?? "🤖",
+            string.Equals(meta.GetValueOrDefault("producesDocument"), "word", StringComparison.OrdinalIgnoreCase),
+            ParseBool(meta.GetValueOrDefault("workflowOnly")));
     }
 
+    /// <summary>Separa los metadatos del encabezado del cuerpo del archivo.</summary>
     internal static (Dictionary<string, string> Meta, string Body) SplitFrontMatter(string content)
     {
         var meta = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -157,8 +174,10 @@ public sealed partial class MarkdownAgentConfigurationService : IAgentConfigurat
         return (meta, bodyStart < 0 ? string.Empty : text[(bodyStart + 1)..]);
     }
 
+    /// <summary>Lee un valor booleano de los metadatos (false si no es válido).</summary>
     private static bool ParseBool(string? value) => bool.TryParse(value, out var b) && b;
 
+    /// <summary>Convierte un id ("qa-analyst") en un nombre legible.</summary>
     private static string ToTitle(string id) =>
         CultureInfo.InvariantCulture.TextInfo.ToTitleCase(id.Replace('-', ' '));
 

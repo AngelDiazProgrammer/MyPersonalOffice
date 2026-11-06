@@ -1,16 +1,59 @@
+@* Página principal: pantalla de selección de oficina o, con una oficina abierta, la cabecera (modo de modelos y consumo), la oficina 3D, la actividad, las tareas y el chat. *@
 @page "/"
 @inherits OfficeComponentBase
 
 <PageTitle>AI Agent Office</PageTitle>
 
+@if (Office.WorkspaceRequired)
+{
+    <main class="workspace-picker">
+        <h1>AI Agent Office</h1>
+        <p class="muted">¿Qué oficina quieres abrir? Solo se despliegan los agentes necesarios.</p>
+        <div class="workspace-cards">
+            @foreach (var w in Office.Workspaces!.Available)
+            {
+                <button type="button" class="workspace-card" @onclick="() => Office.SelectWorkspaceAsync(w.Id)">
+                    <span class="workspace-icon">@w.Icon</span>
+                    <b>@w.Name</b>
+                    <span class="muted">@w.Description</span>
+                    <span class="workspace-agents">
+                        @foreach (var a in w.Agents)
+                        {
+                            <span class="workspace-agent" title="@a.Role">@a.Icon @a.Name</span>
+                        }
+                    </span>
+                </button>
+            }
+        </div>
+        @if (Office.LastError is not null)
+        {
+            <p class="scene-error">@Office.LastError</p>
+        }
+    </main>
+}
+else
+{
 <main class="split">
     <section class="panel office-panel">
         <header class="office-head">
             <div>
                 <h1>AI Agent Office</h1>
                 <span class="muted">Oficina virtual multiagente · Claude</span>
+                @if (Office.ActiveWorkspace is { } ws)
+                {
+                    <button type="button" class="link-btn" title="Volver a la selección de oficina (se limpia la conversación)" @onclick="Office.ChangeWorkspaceAsync">@ws.Icon @ws.Name · cambiar de oficina</button>
+                }
             </div>
             <div class="head-stats">
+                <label class="stat mode-select" title="Qué responde: APIs gratuitas primero (Claude solo si hace falta), solo Claude o solo gratis">
+                    <span class="mode-dot @(Office.Llm?.FreeProviders.Any(p => p.Configured) == true ? "on" : "off")"></span>
+                    <select value="@(Office.Llm?.Mode ?? "FreeFirst")" @onchange="OnModeChanged">
+                        <option value="FreeFirst">Gratis primero</option>
+                        <option value="ClaudeOnly">Solo Claude</option>
+                        <option value="FreeOnly">Solo gratis</option>
+                    </select>
+                    <span class="muted">@LocalLabel</span>
+                </label>
                 <span class="stat" title="Agentes trabajando ahora"><b>@Office.ActiveAgents.Count</b> activos</span>
                 <span class="stat" title="Llamadas a Claude desde que arrancó la app"><b>@Office.Usage.Requests</b> llamadas</span>
                 <details class="stat usage">
@@ -26,6 +69,15 @@
                             <span>Total</span>
                             <span>@Format(Office.Usage.InputTokens) entrada · @Format(Office.Usage.OutputTokens) salida · @Office.Usage.Requests llamadas</span>
                         </div>
+                        <div class="usage-section">Por proveedor (entrada / salida · llamadas)</div>
+                        @foreach (var row in ProviderRows)
+                        {
+                            <div class="usage-row @(row.CoolingDown ? "usage-paused" : string.Empty)" title="@row.Error">
+                                <span>@(row.IsFree ? "🆓" : "☁️") @row.Name@(row.CoolingDown ? " ⏸" : string.Empty)@(row.Error is null ? string.Empty : " ⚠️")@(row.Configured ? string.Empty : " (sin clave)")</span>
+                                <span>@Format(row.Input) / @Format(row.Output) · @row.Requests</span>
+                            </div>
+                        }
+                        <div class="usage-section">Por agente</div>
                         @foreach (var u in Office.Usage.ByAgent)
                         {
                             var agent = Office.Agents.FirstOrDefault(a => a.Id == u.AgentId);
@@ -53,12 +105,40 @@
 
     <ChatPanel />
 </main>
+}
 
 @code {
     protected override async Task OnInitializedAsync()
     {
         await Office.InitializeAsync();
     }
+
+    private sealed record ProviderRow(string Name, bool IsFree, bool Configured, bool CoolingDown, long Input, long Output, long Requests, string? Error = null);
+
+    // Una fila por proveedor: todos los gratuitos de la configuración (aunque aún no tengan uso) más Claude.
+    private IEnumerable<ProviderRow> ProviderRows
+    {
+        get
+        {
+            var used = (Office.Usage.ByProvider ?? Array.Empty<ProviderUsageDto>()).ToDictionary(p => p.Provider, StringComparer.OrdinalIgnoreCase);
+            foreach (var p in Office.Llm?.FreeProviders ?? Array.Empty<FreeProviderStatusDto>())
+            {
+                used.TryGetValue(p.Name, out var u);
+                yield return new ProviderRow(p.Name, true, p.Configured, p.CoolingDown, u?.InputTokens ?? 0, u?.OutputTokens ?? 0, u?.Requests ?? 0, p.Error);
+            }
+            used.TryGetValue("claude", out var c);
+            yield return new ProviderRow("Claude", false, Office.Llm?.ClaudeConfigured ?? true, false, c?.InputTokens ?? 0, c?.OutputTokens ?? 0, c?.Requests ?? 0);
+        }
+    }
+
+    private string LocalLabel => Office.Llm switch
+    {
+        null => string.Empty,
+        var l when !l.FreeProviders.Any(p => p.Configured) => "sin claves gratis",
+        var l => string.Join(" · ", l.FreeProviders.Where(p => p.Configured).Select(p => p.CoolingDown ? p.Name + " ⏸" : p.Name))
+    };
+
+    private Task OnModeChanged(ChangeEventArgs e) => Office.SetModeAsync(e.Value?.ToString() ?? "LocalFirst");
 
     private static string Format(long value) => value switch
     {

@@ -2,12 +2,16 @@ using Microsoft.Extensions.Configuration;
 
 namespace AI.Agent.Office.Infrastructure.Configuration;
 
-/// <summary>Locates repo-level files (.env, configuration/, agents/) regardless of where the app is started.</summary>
+/// <summary>
+/// Ubica los archivos de la raíz del repositorio (.env, configuration/, agents/) sin importar desde
+/// dónde se inicie la app.
+/// </summary>
 public static class OfficeConfiguration
 {
     /// <summary>
-    /// Loads <c>.env</c> into process environment variables (without overriding existing ones), then adds the shared
-    /// <c>configuration/appsettings.json</c> and re-applies environment variables so they keep the highest priority.
+    /// Carga <c>.env</c> en las variables de entorno del proceso (sin pisar las existentes), agrega el
+    /// <c>configuration/appsettings.json</c> compartido y vuelve a aplicar las variables de entorno para
+    /// que conserven la máxima prioridad.
     /// </summary>
     public static IConfigurationBuilder AddOfficeConfiguration(this IConfigurationBuilder builder)
     {
@@ -20,6 +24,7 @@ public static class OfficeConfiguration
         return builder.AddEnvironmentVariables();
     }
 
+    /// <summary>Busca una carpeta (absoluta o relativa) subiendo desde los directorios de trabajo.</summary>
     public static string? ResolveDirectory(string configured)
     {
         if (string.IsNullOrWhiteSpace(configured)) return null;
@@ -27,6 +32,22 @@ public static class OfficeConfiguration
         return FindUpwards(configured, directory: true);
     }
 
+    /// <summary>
+    /// Resuelve una carpeta para escribir: la absoluta tal cual y la relativa junto a la raíz del
+    /// repositorio (el padre de agents/).
+    /// </summary>
+    public static string ResolveWritableDirectory(string configured)
+    {
+        if (Path.IsPathRooted(configured)) return configured;
+        var agents = FindUpwards("agents", directory: true);
+        var root = agents is not null ? Path.GetDirectoryName(agents)! : AppContext.BaseDirectory;
+        return Path.Combine(root, configured);
+    }
+
+    /// <summary>Busca un archivo por ruta relativa subiendo desde los directorios de trabajo y de la aplicación.</summary>
+    public static string? FindFile(string relative) => FindUpwards(relative);
+
+    /// <summary>Busca hacia arriba en el árbol de carpetas hasta encontrar la ruta.</summary>
     private static string? FindUpwards(string relative, bool directory = false)
     {
         foreach (var start in new[] { Directory.GetCurrentDirectory(), AppContext.BaseDirectory })
@@ -42,6 +63,10 @@ public static class OfficeConfiguration
         return null;
     }
 
+    /// <summary>
+    /// Lee el archivo .env (CLAVE=valor) sin sobrescribir variables ya definidas; un valor en blanco
+    /// bloquea la lectura.
+    /// </summary>
     private static void LoadDotEnv(string path)
     {
         foreach (var raw in File.ReadAllLines(path))

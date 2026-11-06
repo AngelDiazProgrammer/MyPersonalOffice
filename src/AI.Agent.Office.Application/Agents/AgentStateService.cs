@@ -6,8 +6,8 @@ using Microsoft.Extensions.Logging;
 namespace AI.Agent.Office.Application.Agents;
 
 /// <summary>
-/// The only component allowed to change an agent's state. Every change emits an event that carries the
-/// new state, so what the UI shows is always the consequence of a real event.
+/// Único componente autorizado a cambiar el estado de un agente. Cada cambio emite un evento con el
+/// nuevo estado, así lo que muestra la interfaz siempre es consecuencia de un evento real.
 /// </summary>
 public sealed class AgentStateService : IAgentStateService
 {
@@ -17,6 +17,7 @@ public sealed class AgentStateService : IAgentStateService
     private readonly object _gate = new();
     private readonly Dictionary<string, long> _revisions = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>Crea el servicio con el registro de agentes y el emisor de eventos.</summary>
     public AgentStateService(IAgentRegistry registry, IOfficeEventService events, ILogger<AgentStateService> logger)
     {
         _registry = registry;
@@ -24,6 +25,7 @@ public sealed class AgentStateService : IAgentStateService
         _logger = logger;
     }
 
+    /// <summary>Cambia el estado de un agente (null = sin cambio) y emite el evento correspondiente.</summary>
     public async Task SetAsync(
         string agentId,
         AgentStatus? status,
@@ -65,6 +67,10 @@ public sealed class AgentStateService : IAgentStateService
         await _events.EmitAsync(eventType, description, agentId, taskId ?? snapshot.CurrentTaskId, payload).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Programa que el agente vuelva a "En reposo" tras una pausa, salvo que mientras tanto haya cambiado
+    /// de estado.
+    /// </summary>
     public void ReturnToIdleAfter(string agentId, TimeSpan delay)
     {
         long revision;

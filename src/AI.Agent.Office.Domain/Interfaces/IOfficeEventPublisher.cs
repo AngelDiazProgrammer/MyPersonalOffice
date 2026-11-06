@@ -2,7 +2,7 @@ using AI.Agent.Office.Domain.Events;
 
 namespace AI.Agent.Office.Domain.Interfaces;
 
-/// <summary>Publishes office events to whoever is listening (SignalR adapter in the API layer).</summary>
+/// <summary>Publica los eventos de la oficina a quien esté escuchando (adaptador de SignalR en la capa de API).</summary>
 public interface IOfficeEventPublisher
 {
     Task PublishAsync(OfficeEvent officeEvent, CancellationToken cancellationToken = default);

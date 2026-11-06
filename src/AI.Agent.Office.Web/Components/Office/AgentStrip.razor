@@ -1,0 +1,14 @@
+@* Franja con una etiqueta por agente y su estado actual. *@
+@inherits OfficeComponentBase
+
+<div class="strip">
+    @foreach (var agent in Office.Agents)
+    {
+        <span class="strip-chip st-@StatusInfo.Css(agent.Status)" style="--agent:@agent.Color" title="@agent.Role">
+            <span class="strip-icon">@agent.Icon</span>
+            <b>@agent.Name</b>
+            <i class="strip-dot"></i>
+            <span class="strip-status">@StatusInfo.Label(agent.Status)</span>
+        </span>
+    }
+</div>

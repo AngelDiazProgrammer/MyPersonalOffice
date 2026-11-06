@@ -40,7 +40,11 @@ public class OrchestrationTests
         var result = await h.Orchestration.HandleMessageAsync(Ask(), CancellationToken.None);
 
         Assert.True(result.Delegated);
-        Assert.Equal("resultado de orchestrator:consolidate", result.Reply);
+        Assert.StartsWith("resultado de orchestrator:consolidate", result.Reply);
+        // The agents' complete outputs are attached verbatim under the synthesis.
+        Assert.Contains("## Arquitecto — Diseñar la arquitectura", result.Reply);
+        Assert.Contains("resultado de agent:architect", result.Reply);
+        Assert.Contains("resultado de agent:qa-analyst", result.Reply);
         Assert.Equal(2, result.Tasks.Count);
         Assert.All(result.Tasks, t => Assert.Equal(TaskStatus.Completed, t.Status));
         Assert.Contains(result.Tasks, t => t.AgentId == "architect" && t.Result == "resultado de agent:architect");
@@ -51,6 +55,116 @@ public class OrchestrationTests
         Assert.Equal(2, types.Count(t => t == OfficeEventType.AgentTaskAssigned));
         Assert.Equal(2, types.Count(t => t == OfficeEventType.TaskCompleted));
         Assert.Contains(OfficeEventType.OrchestrationCompleted, types);
+    }
+
+    [Fact]
+    public async Task A_single_successful_task_is_returned_as_is_without_a_consolidation_call()
+    {
+        var h = new OfficeHarness();
+        h.Script("""
+            {"action":"delegate","message":"x","tasks":[{"id":"t1","agentId":"architect","title":"Diseño","task":"Diseña"}]}
+            """, (_, _) => Task.FromResult(FakeAnthropicService.Text("DISEÑO FINAL")));
+
+        var result = await h.Orchestration.HandleMessageAsync(Ask(), CancellationToken.None);
+
+        Assert.True(result.Delegated);
+        Assert.Equal("DISEÑO FINAL", result.Reply);
+        Assert.Equal(2, h.Anthropic.Requests.Count); // plan + the agent; no consolidation
+        Assert.DoesNotContain(h.Anthropic.Requests, r => r.Purpose == "orchestrator:consolidate");
+    }
+
+    [Fact]
+    public async Task Single_task_consolidation_can_be_turned_back_on()
+    {
+        var h = new OfficeHarness(o => o.SkipConsolidationForSingleTask = false);
+        h.Script("""
+            {"action":"delegate","message":"x","tasks":[{"id":"t1","agentId":"architect","title":"Diseño","task":"Diseña"}]}
+            """);
+
+        await h.Orchestration.HandleMessageAsync(Ask(), CancellationToken.None);
+
+        Assert.Contains(h.Anthropic.Requests, r => r.Purpose == "orchestrator:consolidate");
+    }
+
+    [Fact]
+    public async Task A_failed_single_task_is_still_consolidated_so_the_user_gets_an_explanation()
+    {
+        var h = new OfficeHarness();
+        h.Script("""
+            {"action":"delegate","message":"x","tasks":[{"id":"t1","agentId":"architect","title":"Diseño","task":"Diseña"}]}
+            """, (request, _) => request.Purpose == "agent:architect"
+                ? throw new LlmException("boom")
+                : Task.FromResult(FakeAnthropicService.Text("explicación del fallo")));
+
+        var result = await h.Orchestration.HandleMessageAsync(Ask(), CancellationToken.None);
+
+        Assert.Equal("explicación del fallo", result.Reply);
+    }
+
+    [Fact]
+    public async Task Old_turns_are_shortened_and_history_is_capped_before_planning()
+    {
+        var h = new OfficeHarness(o => { o.MaxHistoryMessages = 4; o.HistoryMessageMaxChars = 50; });
+        h.Script("""{"action":"respond","message":"R-LARGA-""" + new string('x', 300) + "\",\"tasks\":[]}");
+
+        var first = await h.Orchestration.HandleMessageAsync(Ask("uno"), CancellationToken.None);
+        for (var i = 0; i < 3; i++)
+            await h.Orchestration.HandleMessageAsync(new ChatRequestDto("otro " + i, first.ConversationId), CancellationToken.None);
+
+        var last = h.Anthropic.Requests.Last();
+        Assert.True(last.Messages.Count <= 4);
+        var oldAssistant = last.Messages.First(m => m.Role == "assistant");
+        Assert.True(oldAssistant.Content.Length < 60);
+        Assert.Equal("otro 2", last.Messages.Last().Content);
+    }
+
+    [Fact]
+    public async Task An_empty_agent_response_is_retried_once_before_failing()
+    {
+        var h = new OfficeHarness();
+        var calls = 0;
+        h.Script("""
+            {"action":"delegate","message":"x","tasks":[{"id":"t1","agentId":"qa-analyst","title":"QA","task":"Revisa"}]}
+            """, (request, _) => Task.FromResult(request.Purpose!.StartsWith("agent:qa-analyst") && ++calls == 1
+                ? new LlmResponse("", null, 5, 0, "end_turn", "fake")
+                : FakeAnthropicService.Text("revisión lista")));
+
+        var result = await h.Orchestration.HandleMessageAsync(Ask(), CancellationToken.None);
+
+        Assert.Equal(TaskStatus.Completed, Assert.Single(result.Tasks).Status);
+        Assert.Equal("revisión lista", result.Reply);
+        Assert.Equal(2, calls);
+    }
+
+    [Fact]
+    public async Task A_persistently_empty_response_reports_the_stop_reason()
+    {
+        var h = new OfficeHarness();
+        h.Script("""
+            {"action":"delegate","message":"x","tasks":[{"id":"t1","agentId":"qa-analyst","title":"QA","task":"Revisa"}]}
+            """, (request, _) => Task.FromResult(request.Purpose!.StartsWith("agent:")
+                ? new LlmResponse("", null, 5, 0, "refusal", "fake")
+                : FakeAnthropicService.Text("explicación")));
+
+        var result = await h.Orchestration.HandleMessageAsync(Ask(), CancellationToken.None);
+
+        var task = Assert.Single(result.Tasks);
+        Assert.Equal(TaskStatus.Failed, task.Status);
+        Assert.Contains("refusal", task.ErrorMessage);
+    }
+
+    [Fact]
+    public async Task A_result_cut_by_max_tokens_is_flagged_for_the_user()
+    {
+        var h = new OfficeHarness();
+        h.Script("""
+            {"action":"delegate","message":"x","tasks":[{"id":"t1","agentId":"developer","title":"Código","task":"x"}]}
+            """, (_, _) => Task.FromResult(new LlmResponse("código a medias", null, 5, 99, "max_tokens", "fake")));
+
+        var result = await h.Orchestration.HandleMessageAsync(Ask(), CancellationToken.None);
+
+        Assert.Contains("código a medias", result.Reply);
+        Assert.Contains("límite de tokens", result.Reply);
     }
 
     [Fact]
@@ -255,6 +369,79 @@ public class OrchestrationTests
 
         Assert.Equal(2, planningCalls);
         Assert.Equal("corregido", result.Reply);
+    }
+
+    [Fact]
+    public async Task Invalid_plans_get_a_free_corrective_retry_and_only_the_last_attempt_escalates_to_Claude()
+    {
+        var h = new OfficeHarness();
+        var attempts = new List<string?>();
+        h.Anthropic.Handler = (request, _) =>
+        {
+            if (request.StructuredOutput is null) return Task.FromResult(FakeAnthropicService.Text("final"));
+            attempts.Add(request.ProviderPreference);
+            return Task.FromResult(FakeAnthropicService.Decision(attempts.Count < 3
+                ? """{"action":"delegate","message":"x","tasks":[{"id":"t1","agentId":"matematico","title":"x","task":"x"}]}"""
+                : """{"action":"respond","message":"listo","tasks":[]}"""));
+        };
+
+        var result = await h.Orchestration.HandleMessageAsync(Ask(), CancellationToken.None);
+
+        Assert.Equal("listo", result.Reply);
+        Assert.Equal(new string?[] { null, null, "claude" }, attempts);
+    }
+
+    [Fact]
+    public async Task A_plan_cut_by_the_token_limit_is_never_executed_and_the_retry_gets_more_room()
+    {
+        var h = new OfficeHarness();
+        var limits = new List<int>();
+        h.Anthropic.Handler = (request, _) =>
+        {
+            if (request.StructuredOutput is null) return Task.FromResult(FakeAnthropicService.Text("final"));
+            limits.Add(request.MaxTokens);
+            // Attempts 1-2: the JSON was cut after the first of several tasks (looks valid, but is incomplete).
+            return Task.FromResult(limits.Count < 3
+                ? new LlmResponse(string.Empty,
+                    """{"action":"delegate","message":"x","tasks":[{"id":"t1","agentId":"architect","title":"a","task":"a"}]}""",
+                    100, 1024, "max_tokens", "fake")
+                : FakeAnthropicService.Decision("""{"action":"respond","message":"plan completo","tasks":[]}"""));
+        };
+
+        var result = await h.Orchestration.HandleMessageAsync(Ask(), CancellationToken.None);
+
+        Assert.Equal("plan completo", result.Reply);
+        Assert.Empty(h.Tasks.GetAll());                       // the truncated plan did not run
+        Assert.Equal(3, limits.Count);
+        Assert.True(limits[1] > limits[0] && limits[2] > limits[1], string.Join(",", limits));
+        Assert.True(limits[0] >= 3072);                       // roomy by default
+    }
+
+    [Fact]
+    public async Task When_planning_keeps_failing_the_reply_says_why()
+    {
+        var h = new OfficeHarness();
+        h.Anthropic.Handler = (_, _) => Task.FromResult(new LlmResponse(string.Empty, """{"action":"delegate","message":"x","tasks":[]}""", 1, 1, "max_tokens", "fake"));
+
+        var result = await h.Orchestration.HandleMessageAsync(Ask(), CancellationToken.None);
+
+        Assert.Contains("límite de tokens", result.Reply);
+    }
+
+    [Fact]
+    public async Task Agent_names_returned_by_a_free_model_are_mapped_to_the_real_id()
+    {
+        var h = new OfficeHarness();
+        h.Script("""
+            {"action":"delegate","message":"x","tasks":[{"id":"t1","agentId":"Arquitecto","title":"Diseño","task":"Diseña"}]}
+            """);
+
+        var result = await h.Orchestration.HandleMessageAsync(Ask(), CancellationToken.None);
+
+        var task = Assert.Single(result.Tasks);
+        Assert.Equal("architect", task.AgentId);
+        Assert.Equal(TaskStatus.Completed, task.Status);
+        Assert.Single(h.Anthropic.Requests.Where(r => r.StructuredOutput is not null)); // no corrective retry needed
     }
 
     [Fact]

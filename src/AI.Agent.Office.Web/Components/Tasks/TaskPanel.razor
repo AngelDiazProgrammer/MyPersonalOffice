@@ -1,3 +1,4 @@
+@* Panel de tareas delegadas: estado, resultado de cada agente, documentos y botón para cancelar. *@
 @inherits OfficeComponentBase
 
 <section class="card tasks">
@@ -15,6 +16,10 @@
                     <summary>
                         <span class="task-agent">@(agent?.Icon) @(agent?.Name ?? task.AgentId)</span>
                         <span class="task-title">@task.Title</span>
+                        @if (!string.IsNullOrEmpty(task.Provider))
+                        {
+                            <span class="task-provider" title="Modelo que respondió">@(task.Provider.StartsWith("free:") ? "🆓" : "☁️")</span>
+                        }
                         <span class="task-badge">@StatusInfo.Label(task.Status)</span>
                         @if (StatusInfo.IsActive(task.Status))
                         {
@@ -30,6 +35,10 @@
                         @if (!string.IsNullOrEmpty(task.ErrorMessage))
                         {
                             <div class="task-error">@task.ErrorMessage</div>
+                        }
+                        @if (task.DocumentId is { } documentId)
+                        {
+                            <a class="doc-chip" href="@Office.DownloadUrl(documentId)" download="@task.DocumentName">📝 @task.DocumentName ⬇</a>
                         }
                         @if (!string.IsNullOrEmpty(task.Result))
                         {

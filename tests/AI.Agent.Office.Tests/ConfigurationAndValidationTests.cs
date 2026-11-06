@@ -151,7 +151,7 @@ public class MarkdownConfigurationTests
         var report = service.ReloadAsync().GetAwaiter().GetResult();
 
         Assert.True(report.IsValid, string.Join("; ", report.Issues.Select(i => i.Message)));
-        Assert.Equal(6, report.Agents.Count);
+        Assert.Equal(10, report.Agents.Count);
         Assert.Single(report.Agents, a => a.IsOrchestrator);
     }
 }
@@ -163,7 +163,7 @@ public class RegistryTests
     {
         var h = new OfficeHarness();
 
-        Assert.Equal(5, h.Registry.GetAll().Count);
+        Assert.Equal(6, h.Registry.GetAll().Count);
         Assert.All(h.Registry.GetAll(), a => Assert.Equal(AgentStatus.Idle, a.Status));
 
         h.Registry.Update("developer", a => a.Status = AgentStatus.Coding);
@@ -248,6 +248,25 @@ public class DecisionValidationTests
     [InlineData("""{"action":"delegate","message":"x","tasks":[{"id":"a","agentId":"developer","task":"x","dependsOn":["a"]}]}""")]
     [InlineData("""{"action":"delegate","message":"x","tasks":[{"id":"a","agentId":"developer","task":"x"},{"id":"a","agentId":"architect","task":"y"}]}""")]
     public void Invalid_decisions_are_rejected(string json) => Assert.NotEmpty(Validate(json));
+
+    [Theory]
+    [InlineData("teacher", "teacher")]
+    [InlineData("Profesor", "teacher")]
+    [InlineData("PROFESOR", "teacher")]
+    [InlineData("Analista QA", "qa-analyst")]
+    [InlineData("qa analyst", "qa-analyst")]
+    [InlineData("Tutor técnico", "teacher")]
+    [InlineData("teacher agent", "teacher")]
+    [InlineData("matematico", "matematico")]       // unknown: left untouched so validation reports it
+    public void Agent_names_and_loose_ids_are_resolved_to_the_real_id(string given, string expected)
+    {
+        var aliases = new Dictionary<string, string>();
+        foreach (var (id, name, role) in new[] { ("teacher", "Profesor", "Tutor técnico"), ("qa-analyst", "Analista QA", "Control de calidad"), ("developer", "Desarrollador", "Ingeniero de software") })
+            foreach (var alias in new[] { id, name, role })
+                aliases.TryAdd(OrchestratorDecisionValidator.Normalize(alias), id);
+
+        Assert.Equal(expected, OrchestratorDecisionValidator.ResolveAgentId(given, aliases));
+    }
 
     [Fact]
     public void Dependency_cycles_are_rejected()

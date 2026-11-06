@@ -46,6 +46,46 @@ public sealed class FakeAnthropicService : IAnthropicService
     public static LlmResponse Text(string text) => new(text, null, 10, 10, "end_turn", "fake");
 }
 
+public sealed class FakeWordExport : IWordExportService, IPdfExportService
+{
+    public List<(string Title, string Markdown)> Exports { get; } = new();
+    public List<(string Title, string Markdown, DocumentStyle Style)> PdfExports { get; } = new();
+    public List<DocumentStyle> WordStyles { get; } = new();
+
+    public Task<AI.Agent.Office.Application.DTOs.GeneratedDocumentDto> ExportAsync(string title, string markdown, DocumentStyle style = DocumentStyle.Default, CancellationToken cancellationToken = default)
+    {
+        Exports.Add((title, markdown));
+        WordStyles.Add(style);
+        return Task.FromResult(new AI.Agent.Office.Application.DTOs.GeneratedDocumentDto(Guid.NewGuid(), "doc.docx", 123));
+    }
+
+    Task<AI.Agent.Office.Application.DTOs.GeneratedDocumentDto> IPdfExportService.ExportAsync(string title, string markdown, DocumentStyle style, CancellationToken cancellationToken)
+    {
+        PdfExports.Add((title, markdown, style));
+        return Task.FromResult(new AI.Agent.Office.Application.DTOs.GeneratedDocumentDto(Guid.NewGuid(), "doc.pdf", 456));
+    }
+}
+
+public sealed class FakeKnowledgeBase : IKnowledgeBaseService
+{
+    public List<AI.Agent.Office.Domain.Entities.KnowledgeEntry> Entries { get; } = new();
+
+    public Task<int> ReloadAsync(CancellationToken cancellationToken = default) => Task.FromResult(Entries.Count);
+    public IReadOnlyList<AI.Agent.Office.Domain.Entities.KnowledgeEntry> GetAll() => Entries;
+    public AI.Agent.Office.Domain.Entities.KnowledgeEntry? GetByCode(string code) => Entries.FirstOrDefault(e => e.Code == code);
+
+    /// <summary>Tiny matcher for tests: score = number of keywords contained in the query (x5).</summary>
+    public IReadOnlyList<KnowledgeHit> Search(string query, int maxResults) => Entries
+        .Select(e => new KnowledgeHit(e, e.Keywords.Count(k => query.Contains(k, StringComparison.OrdinalIgnoreCase)) * 5.0))
+        .Where(h => h.Score > 0).OrderByDescending(h => h.Score).Take(maxResults).ToList();
+}
+
+public sealed class FakeFormatService : IDeliveryFormatService
+{
+    public DeliveryFormat? Format { get; set; } = new("formato-apa.md", "# Título" + Environment.NewLine + "## Resumen" + Environment.NewLine + "## Desarrollo" + Environment.NewLine + "## Referencias");
+    public Task<DeliveryFormat?> GetActiveFormatAsync(CancellationToken cancellationToken = default) => Task.FromResult(Format);
+}
+
 public sealed class FakeAgentConfiguration : IAgentConfigurationService
 {
     public List<AgentDefinition> Definitions { get; } = new()
@@ -54,13 +94,14 @@ public sealed class FakeAgentConfiguration : IAgentConfigurationService
         Make("developer", "Desarrollador", AgentStatus.Coding),
         Make("architect", "Arquitecto"),
         Make("qa-analyst", "Analista QA", AgentStatus.Reviewing),
-        Make("pdf-reader", "Lector PDF", AgentStatus.Reading, acceptsDocuments: true)
+        Make("pdf-reader", "Lector PDF", AgentStatus.Reading, acceptsDocuments: true),
+        Make("word-writer", "Redactor Word", producesWord: true)
     };
 
     public static AgentDefinition Make(string id, string name, AgentStatus working = AgentStatus.Working,
-        bool isOrchestrator = false, bool acceptsDocuments = false) =>
+        bool isOrchestrator = false, bool acceptsDocuments = false, bool producesWord = false) =>
         new(id, name, $"Descripción de {name}", name, id + ".md", $"Instrucciones de {name}",
-            new AgentModelSettings(), working, isOrchestrator, acceptsDocuments, "#8b5cf6", "🤖");
+            new AgentModelSettings(), working, isOrchestrator, acceptsDocuments, "#8b5cf6", "🤖", producesWord);
 
     public Task<ConfigurationReport> ReloadAsync(CancellationToken cancellationToken = default) =>
         Task.FromResult(Validate());
@@ -76,6 +117,11 @@ public sealed class OfficeHarness
 {
     public FakeAnthropicService Anthropic { get; } = new();
     public FakeAgentConfiguration Configuration { get; } = new();
+    public FakeWordExport Word { get; } = new();
+    public FakeKnowledgeBase Knowledge { get; } = new();
+    public FakeFormatService Formats { get; } = new();
+    public WorkspaceService Workspaces { get; }
+    public PendingChoiceStore Pending { get; } = new();
     public RecordingPublisher Publisher { get; } = new();
     public AgentRegistry Registry { get; } = new();
     public TaskStore Tasks { get; } = new();
@@ -87,7 +133,7 @@ public sealed class OfficeHarness
     public OrchestrationOptions Options { get; }
     public OrchestrationService Orchestration { get; }
 
-    public OfficeHarness(Action<OrchestrationOptions>? configure = null)
+    public OfficeHarness(Action<OrchestrationOptions>? configure = null, Action<KnowledgeOptions>? configureKnowledge = null)
     {
         Options = new OrchestrationOptions { ThinkingDisplayMs = 0, CompletedDisplaySeconds = 60, TaskTimeoutSeconds = 5 };
         configure?.Invoke(Options);
@@ -100,12 +146,28 @@ public sealed class OfficeHarness
         Registry.Load(Configuration.Definitions);
 
         var runner = new AgentRunner(Configuration, Anthropic, State, options, NullLogger<AgentRunner>.Instance);
-        var executor = new PlanExecutor(Tasks, runner, new ExecutionLimiter(options), State, Events, Registry, options,
+        var executor = new PlanExecutor(Tasks, runner, new ExecutionLimiter(options), State, Events, Registry, Word, options,
             NullLogger<PlanExecutor>.Instance);
 
-        Orchestration = new OrchestrationService(Anthropic, Configuration, Conversations, Tasks, Documents, State, Events,
-            executor, options, NullLogger<OrchestrationService>.Instance);
+        Workspaces = new WorkspaceService(Microsoft.Extensions.Options.Options.Create(new WorkspacesOptions()));
+        var knowledgeOptions = new KnowledgeOptions { MinScore = 4 };
+        configureKnowledge?.Invoke(knowledgeOptions);
+        var workflow = new KnowledgeWorkflow(Knowledge, Formats, Configuration, Workspaces,
+            Microsoft.Extensions.Options.Options.Create(knowledgeOptions), NullLogger<KnowledgeWorkflow>.Instance);
+        _executor = executor;
+        _workflow = workflow;
+        _options = options;
+        Orchestration = CreateOrchestration(Workspaces);
     }
+
+    private readonly PlanExecutor _executor;
+    private readonly KnowledgeWorkflow _workflow;
+    private readonly IOptions<OrchestrationOptions> _options;
+
+    /// <summary>A second orchestration service sharing everything but the workspace selection (the workflow keeps its own).</summary>
+    public OrchestrationService CreateOrchestration(IWorkspaceService workspaces) =>
+        new(Anthropic, Configuration, Conversations, Tasks, Documents, State, Events,
+            _executor, _workflow, workspaces, Word, Word, Pending, _options, NullLogger<OrchestrationService>.Instance);
 
     /// <summary>Anthropic fake: planning calls get <paramref name="decisionJson"/>, everything else is answered by <paramref name="agentReply"/>.</summary>
     public void Script(string decisionJson, Func<LlmRequest, CancellationToken, Task<LlmResponse>>? agentReply = null)

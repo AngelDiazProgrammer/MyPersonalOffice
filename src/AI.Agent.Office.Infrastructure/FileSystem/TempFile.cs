@@ -1,12 +1,16 @@
 namespace AI.Agent.Office.Infrastructure.FileSystem;
 
-/// <summary>A temporary file that is always deleted when disposed. Documents are never stored permanently.</summary>
+/// <summary>
+/// Archivo temporal que siempre se borra al desecharlo. Los documentos nunca se guardan de forma
+/// permanente.
+/// </summary>
 public sealed class TempFile : IAsyncDisposable
 {
     public string Path { get; }
 
     private TempFile(string path) => Path = path;
 
+    /// <summary>Copia el contenido a un archivo temporal nuevo.</summary>
     public static async Task<TempFile> CreateAsync(Stream content, string extension, CancellationToken cancellationToken)
     {
         var directory = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "ai-agent-office");
@@ -27,6 +31,7 @@ public sealed class TempFile : IAsyncDisposable
         }
     }
 
+    /// <summary>Borra el archivo temporal.</summary>
     public ValueTask DisposeAsync()
     {
         try { if (File.Exists(Path)) File.Delete(Path); }

@@ -3,7 +3,7 @@ using Microsoft.AspNetCore.Components;
 
 namespace AI.Agent.Office.Web.Components.Shared;
 
-/// <summary>Re-renders the component whenever the office state changes (events from SignalR).</summary>
+/// <summary>Vuelve a dibujar el componente cada vez que cambia el estado de la oficina (eventos de SignalR).</summary>
 public abstract class OfficeComponentBase : ComponentBase, IDisposable
 {
     [Inject] protected OfficeStateService Office { get; set; } = default!;

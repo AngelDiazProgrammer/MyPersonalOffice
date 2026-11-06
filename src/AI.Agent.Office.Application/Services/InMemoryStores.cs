@@ -5,12 +5,16 @@ using Microsoft.Extensions.Options;
 
 namespace AI.Agent.Office.Application.Services;
 
+#region Conversaciones
+
+/// <summary>Almacén en memoria de conversaciones y de las ejecuciones en curso (para poder cancelarlas).</summary>
 public sealed class ConversationStore : IConversationStore
 {
     private readonly object _gate = new();
     private readonly Dictionary<Guid, Conversation> _conversations = new();
     private readonly Dictionary<Guid, CancellationTokenSource> _runs = new();
 
+    /// <summary>Devuelve la conversación indicada o crea una nueva si no existe.</summary>
     public Conversation GetOrCreate(Guid? conversationId)
     {
         lock (_gate)
@@ -22,16 +26,19 @@ public sealed class ConversationStore : IConversationStore
         }
     }
 
+    /// <summary>Busca una conversación por su id.</summary>
     public Conversation? Get(Guid conversationId)
     {
         lock (_gate) { return _conversations.GetValueOrDefault(conversationId); }
     }
 
+    /// <summary>Registra la ejecución en curso de una conversación.</summary>
     public void RegisterRun(Guid conversationId, CancellationTokenSource source)
     {
         lock (_gate) { _runs[conversationId] = source; }
     }
 
+    /// <summary>Quita la ejecución registrada al terminar.</summary>
     public void UnregisterRun(Guid conversationId, CancellationTokenSource source)
     {
         lock (_gate)
@@ -41,6 +48,7 @@ public sealed class ConversationStore : IConversationStore
         }
     }
 
+    /// <summary>Cancela la ejecución en curso; devuelve false si no había ninguna.</summary>
     public bool CancelRun(Guid conversationId)
     {
         CancellationTokenSource? source;
@@ -52,6 +60,11 @@ public sealed class ConversationStore : IConversationStore
     }
 }
 
+#endregion
+
+#region Registro de actividad
+
+/// <summary>Bitácora en memoria con los últimos eventos de la oficina (se descartan los más viejos).</summary>
 public sealed class ActivityLog : IActivityLog
 {
     private readonly object _gate = new();
@@ -63,6 +76,7 @@ public sealed class ActivityLog : IActivityLog
         _capacity = Math.Max(50, options.Value.MaxActivityEntries);
     }
 
+    /// <summary>Agrega un evento a la bitácora.</summary>
     public void Add(OfficeActivity activity)
     {
         lock (_gate)
@@ -72,6 +86,7 @@ public sealed class ActivityLog : IActivityLog
         }
     }
 
+    /// <summary>Últimos eventos, del más nuevo al más viejo; opcionalmente solo los de un agente.</summary>
     public IReadOnlyList<OfficeActivity> GetRecent(int count, string? agentId = null)
     {
         lock (_gate)
@@ -84,6 +99,11 @@ public sealed class ActivityLog : IActivityLog
     }
 }
 
+#endregion
+
+#region Documentos adjuntos
+
+/// <summary>Guarda en memoria el texto extraído de los PDF subidos (nunca el archivo) y descarta los más viejos.</summary>
 public sealed class DocumentStore : IDocumentStore
 {
     private readonly object _gate = new();
@@ -95,6 +115,7 @@ public sealed class DocumentStore : IDocumentStore
         _capacity = Math.Max(1, options.Value.MaxDocumentsInMemory);
     }
 
+    /// <summary>Guarda un documento; si se supera el máximo se elimina el más antiguo.</summary>
     public void Add(OfficeDocument document)
     {
         lock (_gate)
@@ -104,22 +125,38 @@ public sealed class DocumentStore : IDocumentStore
         }
     }
 
+    /// <summary>Busca un documento por su id.</summary>
     public OfficeDocument? Get(Guid id)
     {
         lock (_gate) { return _documents.FirstOrDefault(d => d.Id == id); }
     }
 }
 
+#endregion
+
+#region Consumo de tokens
+
+/// <summary>
+/// Contador de tokens y llamadas desde que arrancó la app, total, por agente y por proveedor (Claude o
+/// APIs gratuitas).
+/// </summary>
 public sealed class TokenUsageTracker : ITokenUsageTracker
 {
     private readonly object _gate = new();
     private readonly Dictionary<string, AgentUsage> _byAgent = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, AgentUsage> _byProvider = new(StringComparer.OrdinalIgnoreCase);
     private long _input;
     private long _output;
     private long _requests;
+    private long _freeInput;
+    private long _freeOutput;
+    private long _freeRequests;
 
-    /// <summary>purpose is "agent:{id}" or "orchestrator:{phase}"; usage is grouped per agent.</summary>
-    public void Record(string purpose, int inputTokens, int outputTokens)
+    /// <summary>
+    /// Registra un consumo. "purpose" es "agent:{id}" u "orchestrator:{fase}"; el consumo se agrupa por
+    /// agente.
+    /// </summary>
+    public void Record(string purpose, int inputTokens, int outputTokens, bool free = false, string? provider = null)
     {
         var key = purpose.StartsWith("agent:", StringComparison.OrdinalIgnoreCase) ? purpose[6..]
             : purpose.StartsWith("orchestrator", StringComparison.OrdinalIgnoreCase) ? "orchestrator"
@@ -130,18 +167,30 @@ public sealed class TokenUsageTracker : ITokenUsageTracker
             _input += inputTokens;
             _output += outputTokens;
             _requests++;
+            var providerKey = string.IsNullOrWhiteSpace(provider) ? (free ? "free" : "claude") : provider;
+            var byProvider = _byProvider.GetValueOrDefault(providerKey) ?? new AgentUsage(0, 0, 0);
+            _byProvider[providerKey] = new AgentUsage(byProvider.InputTokens + inputTokens, byProvider.OutputTokens + outputTokens, byProvider.Requests + 1);
+            if (free) { _freeInput += inputTokens; _freeOutput += outputTokens; _freeRequests++; }
             var current = _byAgent.GetValueOrDefault(key) ?? new AgentUsage(0, 0, 0);
             _byAgent[key] = new AgentUsage(current.InputTokens + inputTokens, current.OutputTokens + outputTokens, current.Requests + 1);
         }
     }
 
+    /// <summary>Foto del consumo acumulado hasta ahora.</summary>
     public TokenUsageSnapshot GetSnapshot()
     {
-        lock (_gate) { return new TokenUsageSnapshot(_input, _output, _requests, new Dictionary<string, AgentUsage>(_byAgent)); }
+        lock (_gate) { return new TokenUsageSnapshot(_input, _output, _requests, new Dictionary<string, AgentUsage>(_byAgent), _freeInput, _freeOutput, _freeRequests, new Dictionary<string, AgentUsage>(_byProvider)); }
     }
 }
 
-/// <summary>Per-agent exclusive lock + global concurrency slots. Lock order is always agent first, slot second.</summary>
+#endregion
+
+#region Límite de concurrencia
+
+/// <summary>
+/// Un candado exclusivo por agente más un número máximo de ejecuciones simultáneas globales. El orden
+/// es siempre: primero el agente, después el cupo.
+/// </summary>
 public sealed class ExecutionLimiter : IExecutionLimiter
 {
     private readonly SemaphoreSlim _slots;
@@ -154,6 +203,7 @@ public sealed class ExecutionLimiter : IExecutionLimiter
         _slots = new SemaphoreSlim(max, max);
     }
 
+    /// <summary>Espera el turno del agente y un cupo global; al liberar el resultado se devuelven ambos.</summary>
     public async Task<IAsyncDisposable> EnterAsync(string agentId, CancellationToken cancellationToken)
     {
         var agentLock = _agentLocks.GetOrAdd(agentId, _ => new SemaphoreSlim(1, 1));
@@ -171,6 +221,7 @@ public sealed class ExecutionLimiter : IExecutionLimiter
         return new Lease(_slots, agentLock);
     }
 
+    /// <summary>Permiso que libera el candado del agente y el cupo al desecharse.</summary>
     private sealed class Lease : IAsyncDisposable
     {
         private SemaphoreSlim? _slots;
@@ -189,4 +240,6 @@ public sealed class ExecutionLimiter : IExecutionLimiter
             return ValueTask.CompletedTask;
         }
     }
+#endregion
+
 }

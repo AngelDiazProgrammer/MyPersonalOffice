@@ -26,6 +26,23 @@ public class TokenUsageTests
     }
 
     [Fact]
+    public void Usage_is_split_per_provider()
+    {
+        var tracker = new TokenUsageTracker();
+        tracker.Record("agent:teacher", 100, 50, free: true, provider: "groq");
+        tracker.Record("agent:teacher", 10, 5, free: true, provider: "groq");
+        tracker.Record("agent:architect", 200, 80, free: true, provider: "cloudflare");
+        tracker.Record("orchestrator:plan", 300, 40, free: false, provider: "claude");
+
+        var by = tracker.GetSnapshot().ByProvider!;
+
+        Assert.Equal(new AgentUsage(110, 55, 2), by["groq"]);
+        Assert.Equal(new AgentUsage(200, 80, 1), by["cloudflare"]);
+        Assert.Equal(new AgentUsage(300, 40, 1), by["claude"]);
+        Assert.Equal(3, tracker.GetSnapshot().Requests + 0 - 1); // 4 requests in total
+    }
+
+    [Fact]
     public async Task Tracker_is_thread_safe()
     {
         var tracker = new TokenUsageTracker();
@@ -44,7 +61,7 @@ public class TokenUsageTests
         tracker.Record("agent:developer", 2_000_000, 1_000_000);
 
         OfficeQueryService Create(PricingOptions p) => new(h.Registry, h.Tasks, h.Activity, h.Conversations, tracker,
-            h.Anthropic, Microsoft.Extensions.Options.Options.Create(p));
+            h.Anthropic, Microsoft.Extensions.Options.Options.Create(p), h.Workspaces, h.Configuration);
 
         Assert.Null(Create(new PricingOptions()).GetUsage().EstimatedCostUsd);
         var usage = Create(new PricingOptions { InputPerMillionTokens = 3m, OutputPerMillionTokens = 15m }).GetUsage();
