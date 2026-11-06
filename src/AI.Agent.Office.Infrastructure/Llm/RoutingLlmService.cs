@@ -48,6 +48,10 @@ public sealed class RoutingLlmService : IAnthropicService, ILlmRouterState, ILlm
     public Task<LlmStatusDto> GetStatusAsync(CancellationToken cancellationToken = default) =>
         Task.FromResult(new LlmStatusDto(Mode.ToString(), _free.GetStatuses(), _claude.IsConfigured));
 
+    /// <summary>Prueba un proveedor gratuito concreto con una petición mínima.</summary>
+    public Task<LlmProviderTestDto> TestProviderAsync(string provider, string? model = null, CancellationToken cancellationToken = default) =>
+        _free.TestProviderAsync(provider, model, cancellationToken);
+
     /// <summary>Envía la solicitud al destino que corresponde según el modo, la privacidad y la disponibilidad.</summary>
     public async Task<LlmResponse> SendAsync(LlmRequest request, CancellationToken cancellationToken = default)
     {

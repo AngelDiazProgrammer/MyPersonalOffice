@@ -241,6 +241,11 @@ public sealed class LlmController : ControllerBase
     public async Task<ActionResult<LlmStatusDto>> Status(CancellationToken cancellationToken) =>
         Ok(await _status.GetStatusAsync(cancellationToken));
 
+    /// <summary>Prueba un proveedor gratuito (por ejemplo "gemini") con una petición mínima y devuelve si funciona, la latencia o el error.</summary>
+    [HttpPost("test")]
+    public async Task<ActionResult<LlmProviderTestDto>> TestProvider([FromBody] LlmProviderTestRequestDto request, CancellationToken cancellationToken) =>
+        Ok(await _status.TestProviderAsync(request.Provider, request.Model, cancellationToken));
+
     /// <summary>Cambia en caliente entre FreeFirst, ClaudeOnly y FreeOnly.</summary>
     [HttpPost("mode")]
     public async Task<ActionResult<LlmStatusDto>> SetMode([FromBody] LlmModeRequestDto request, CancellationToken cancellationToken)

@@ -39,4 +39,7 @@ public interface IWorkspaceService
 public interface ILlmStatusService
 {
     Task<LlmStatusDto> GetStatusAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>Envía una petición mínima SOLO a un proveedor gratuito (sin pasar por el orden ni por Claude) para comprobar que funciona.</summary>
+    Task<LlmProviderTestDto> TestProviderAsync(string provider, string? model = null, CancellationToken cancellationToken = default);
 }

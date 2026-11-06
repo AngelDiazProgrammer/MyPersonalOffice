@@ -116,7 +116,7 @@ La app usa **un único servicio global de APIs gratuitas** (`FreeApiService`): c
 | **Solo Claude** | Como antes |
 | **Solo gratis** | Nunca llama a Claude |
 
-- **Proveedores incluidos:** Groq (`llama-3.3-70b-versatile`) y Cloudflare Workers AI (`@cf/meta/llama-3.3-70b-instruct-fp8-fast`). Ambos usan el formato compatible con OpenAI; agregar otro es copiar una entrada.
+- **Proveedores incluidos:** Groq (`openai/gpt-oss-120b`), Cloudflare Workers AI (`@cf/meta/llama-3.3-70b-instruct-fp8-fast`) y Google Gemini (`gemini-flash-lite-latest`; `gemini-3.8-flash` suele dar 503 por alta demanda, clave en `GEMINI_API_KEY`, se obtiene en https://aistudio.google.com/apikey; su capa gratuita puede usar el contenido para mejorar los productos de Google, así que no la uses con datos confidenciales). Ambos usan el formato compatible con OpenAI; agregar otro es copiar una entrada.
 - **Privacidad:** las solicitudes con **documentos adjuntos nunca van a APIs gratuitas** (solo a Claude). `Llm:AllowedRegions` permite restringir por región (por ejemplo `["US"]`). Se descartaron los planes gratuitos que pueden entrenar con tus datos (Gemini free, Mistral free, OpenRouter free) y los que no se pudieron verificar.
 - **Límites de uso:** si un proveedor responde 429, se pone en pausa (respetando `Retry-After`) y se pasa al siguiente. Los prompts mayores que `MaxInputTokens` del proveedor van directo al siguiente / Claude.
 - **Claves** (en `.env`, ver `.env.example`): `GROQ_API_KEY`, `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID`, y `ANTHROPIC_API_KEY`. Con solo una de ellas la app ya funciona.

@@ -106,7 +106,9 @@ public sealed partial class FreeApiService
                 using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false));
                 if (!doc.RootElement.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Array) continue;
 
-                var ids = data.EnumerateArray().Select(m => m.TryGetProperty("id", out var id) ? id.GetString() : null).Where(id => id is not null).ToList();
+                var ids = data.EnumerateArray().Select(m => m.TryGetProperty("id", out var id) ? id.GetString() : null).Where(id => id is not null)
+                    .Select(id => id!.StartsWith("models/", StringComparison.OrdinalIgnoreCase) ? id[7..] : id)   // Gemini lista "models/gemini-..."
+                    .ToList();
                 if (ids.Count == 0 || ids.Contains(provider.Options.Model, StringComparer.OrdinalIgnoreCase)) continue;
 
                 provider.LastError = $"el modelo '{provider.Options.Model}' no está disponible para tu clave";
@@ -140,6 +142,34 @@ public sealed partial class FreeApiService
     #endregion
 
     #region Envío a los proveedores
+
+    /// <summary>
+    /// Prueba UN proveedor por su nombre con una petición mínima, ignorando el orden y las pausas. Si responde bien, le quita la pausa
+    /// y el error guardado. Sirve para diagnosticar claves, modelos y conexión.
+    /// </summary>
+    public async Task<LlmProviderTestDto> TestProviderAsync(string name, string? model, CancellationToken cancellationToken)
+    {
+        var provider = _providers.FirstOrDefault(p => string.Equals(p.Options.Name, name, StringComparison.OrdinalIgnoreCase));
+        if (provider is null) return new LlmProviderTestDto(name, string.Empty, false, 0, null, "Proveedor desconocido.");
+        if (!provider.Configured) return new LlmProviderTestDto(provider.Options.Name, provider.Options.Model, false, 0, null, "Sin clave configurada.");
+
+        var request = new LlmRequest("Responde solo con la palabra OK.", new[] { new LlmMessage("user", "Prueba de conexión") }, 20,
+            Purpose: "provider-test", FreeModel: model, Sensitive: false);
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        try
+        {
+            var response = await SendToAsync(provider, request, cancellationToken).ConfigureAwait(false);
+            provider.LastError = null;
+            provider.CooldownUntil = default;
+            return new LlmProviderTestDto(provider.Options.Name, model ?? provider.Options.Model, true, watch.ElapsedMilliseconds, response.Text.Trim(), null);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+        {
+            var detail = ex is LlmException llm && llm.InnerException is not null ? $"{llm.Message}: {llm.InnerException.Message}" : ex.Message;
+            provider.LastError = detail;
+            return new LlmProviderTestDto(provider.Options.Name, model ?? provider.Options.Model, false, watch.ElapsedMilliseconds, null, detail);
+        }
+    }
 
     /// <summary>True si algún proveedor podría atender la solicitud ahora mismo.</summary>
     public bool CanHandle(LlmRequest request)
@@ -182,8 +212,9 @@ public sealed partial class FreeApiService
             {
                 throw;
             }
-            catch (LlmException ex)
+            catch (Exception ex) when (ex is LlmException or System.Text.Json.JsonException or InvalidOperationException or KeyNotFoundException or FormatException)
             {
+                // Un proveedor con una respuesta rara o ilegible nunca debe tumbar la solicitud: se pasa al siguiente.
                 provider.LastError = ex.Message;
                 reasons.Add($"{provider.Options.Name}: {ex.Message}");
                 _logger.LogInformation("{Provider} falló ({Message}); se prueba el siguiente.", provider.Options.Name, ex.Message);
@@ -370,15 +401,19 @@ public sealed partial class FreeApiService
         {
             using var doc = JsonDocument.Parse(payload);
             var root = doc.RootElement;
+            // Gemini envuelve sus errores en un arreglo: [{"error": {...}}].
+            if (root.ValueKind == JsonValueKind.Array && root.GetArrayLength() > 0) root = root[0];
+            if (root.ValueKind != JsonValueKind.Object) return "error";
+
             if (root.TryGetProperty("error", out var e))
             {
                 if (e.ValueKind == JsonValueKind.String) return e.GetString() ?? "error";
-                if (e.TryGetProperty("message", out var m) && m.ValueKind == JsonValueKind.String) return m.GetString() ?? "error";
+                if (e.ValueKind == JsonValueKind.Object && e.TryGetProperty("message", out var m) && m.ValueKind == JsonValueKind.String) return m.GetString() ?? "error";
             }
             if (root.TryGetProperty("errors", out var errs) && errs.ValueKind == JsonValueKind.Array && errs.GetArrayLength() > 0
-                && errs[0].TryGetProperty("message", out var em)) return em.GetString() ?? "error";
+                && errs[0].ValueKind == JsonValueKind.Object && errs[0].TryGetProperty("message", out var em)) return em.GetString() ?? "error";
         }
-        catch (JsonException) { }
+        catch (Exception ex) when (ex is JsonException or InvalidOperationException) { }
         return "error";
     }
 

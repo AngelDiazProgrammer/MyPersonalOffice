@@ -237,6 +237,49 @@ public class LlmRoutingTests
     }
 
     [Fact]
+    public async Task Startup_check_accepts_model_ids_listed_with_the_models_prefix_like_Gemini_does()
+    {
+        var rig = Create(free: (req, _) => req.RequestUri!.AbsolutePath.EndsWith("/models") && req.RequestUri.Host == "groq.test"
+            ? FakeHandler.Json("""{"data":[{"id":"models/llama-70b"}]}""")
+            : FakeHandler.Json(Reply("ok")));
+
+        await rig.FreeService.ValidateModelsAsync(CancellationToken.None);
+
+        Assert.Null(rig.FreeService.GetStatuses().Single(s => s.Name == "groq").Error);   // "models/llama-70b" == "llama-70b"
+    }
+
+    [Fact]
+    public async Task An_error_wrapped_in_a_json_array_like_Geminis_falls_through_to_the_next_provider_instead_of_crashing()
+    {
+        var rig = Create(free: (req, _) => req.RequestUri!.Host == "groq.test"
+            ? FakeHandler.Json("""[{"error":{"code":503,"message":"alta demanda"}}]""", HttpStatusCode.ServiceUnavailable)
+            : FakeHandler.Json(Reply("respuesta del segundo")));
+
+        var response = await rig.Router.SendAsync(Plain());
+
+        Assert.Equal("free:cloudflare", response.Provider);
+        Assert.Contains("alta demanda", rig.FreeService.GetStatuses().Single(s => s.Name == "groq").Error);
+    }
+
+    [Fact]
+    public async Task The_provider_test_reports_success_or_the_real_error_without_touching_the_order()
+    {
+        var rig = Create(free: (req, _) => req.RequestUri!.Host == "groq.test"
+            ? FakeHandler.Json("""[{"error":{"message":"modelo saturado"}}]""", HttpStatusCode.ServiceUnavailable)
+            : FakeHandler.Json(Reply("OK")));
+
+        var bad = await rig.FreeService.TestProviderAsync("groq", null, CancellationToken.None);
+        var good = await rig.FreeService.TestProviderAsync("cloudflare", null, CancellationToken.None);
+        var unknown = await rig.FreeService.TestProviderAsync("nope", null, CancellationToken.None);
+
+        Assert.False(bad.Ok);
+        Assert.Contains("modelo saturado", bad.Error);
+        Assert.True(good.Ok);
+        Assert.Equal("OK", good.Reply);
+        Assert.False(unknown.Ok);
+    }
+
+    [Fact]
     public async Task Empty_free_answers_are_skipped_in_favor_of_the_next_provider()
     {
         var rig = Create(free: (req, _) => FakeHandler.Json(Reply(req.RequestUri!.Host == "groq.test" ? "" : "ahora sí")));

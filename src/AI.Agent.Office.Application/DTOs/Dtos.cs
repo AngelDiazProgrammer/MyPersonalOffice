@@ -54,6 +54,12 @@ public sealed record LlmStatusDto(string Mode, IReadOnlyList<FreeProviderStatusD
 /// <summary>Solicitud para cambiar el modo de enrutamiento.</summary>
 public sealed record LlmModeRequestDto(string Mode);
 
+/// <summary>Resultado de probar un proveedor gratuito con una petición mínima.</summary>
+public sealed record LlmProviderTestDto(string Provider, string Model, bool Ok, long LatencyMs, string? Reply, string? Error);
+
+/// <summary>Solicitud para probar un proveedor gratuito por su nombre.</summary>
+public sealed record LlmProviderTestRequestDto(string Provider, string? Model = null);
+
 /// <summary>Agente de una oficina, para mostrarlo en la pantalla de selección.</summary>
 public sealed record WorkspaceAgentDto(string Id, string Name, string Icon, string Role);
 
