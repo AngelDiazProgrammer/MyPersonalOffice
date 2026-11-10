@@ -2,7 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\AI.Agent.Office.Application\AI.Agent.Office.Application.csproj" />
-    <ProjectReference Include="..\AI.Agent.Office.Infrastructure\AI.Agent.Office.Infrastructure.csproj" />
+    <ProjectReference Include="..\AI.Agent.Office.Infrastructure\AI.Agent.Office.Infrastructure.csproj" PrivateAssets="compile" />
   </ItemGroup>
 
   <PropertyGroup>

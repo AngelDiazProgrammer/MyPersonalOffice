@@ -55,6 +55,26 @@ public sealed class RoutingLlmService : IAnthropicService, ILlmRouterState, ILlm
     /// <summary>Envía la solicitud al destino que corresponde según el modo, la privacidad y la disponibilidad.</summary>
     public async Task<LlmResponse> SendAsync(LlmRequest request, CancellationToken cancellationToken = default)
     {
+        // Registro por llamada (spec 005, RF-002): quién, qué modelo, cuánto tardó y cuántos tokens. NUNCA el contenido del mensaje.
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        try
+        {
+            var response = await RouteAsync(request, cancellationToken).ConfigureAwait(false);
+            _logger.LogInformation("Llamada a modelo {Purpose}: proveedor {Provider}, modelo {Model}, {DurationMs} ms, {InputTokens} tokens de entrada, {OutputTokens} de salida",
+                request.Purpose ?? "solicitud", response.Provider ?? "desconocido", response.Model, watch.ElapsedMilliseconds, response.InputTokens, response.OutputTokens);
+            return response;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning("Llamada a modelo {Purpose} falló tras {DurationMs} ms ({ErrorType})",
+                request.Purpose ?? "solicitud", watch.ElapsedMilliseconds, ex.GetType().Name);
+            throw;
+        }
+    }
+
+    /// <summary>Decide el destino (APIs gratuitas o Claude) según el modo, la privacidad y la disponibilidad.</summary>
+    private async Task<LlmResponse> RouteAsync(LlmRequest request, CancellationToken cancellationToken)
+    {
         var mode = Mode;
         var forceClaude = string.Equals(request.ProviderPreference, LlmProviders.Claude, StringComparison.OrdinalIgnoreCase);
         var claudeAllowed = mode != LlmMode.FreeOnly && _claude.IsConfigured;

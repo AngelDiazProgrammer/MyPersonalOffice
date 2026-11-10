@@ -227,3 +227,79 @@ public class KnowledgeChoiceFlowTests
 
     #endregion
 }
+
+/// <summary>RF-014: si el Lector PDF falla, se reintenta una vez con Claude; el Investigador nunca recibe el documento directamente.</summary>
+public class ReaderFallbackTests
+{
+    private const string Body =
+        "## SEG-003 · Phishing\n### Acciones inmediatas\n1. Cambiar la contraseña.\n\n" +
+        "### Solución A · Estándar (recomendada)\n**Cuándo conviene:** siempre\n1. Paso A.\n\n### Solución B · Otra\n**Cuándo conviene:** a veces\n1. Paso B.\n";
+
+    private static (OfficeHarness H, OfficeDocument Doc) Create(bool retry, Func<bool, string?> readerBehavior)
+    {
+        var h = new OfficeHarness(configureKnowledge: k => k.RetryReaderWithClaude = retry);
+        h.Configuration.Definitions.AddRange(new[]
+        {
+            FakeAgentConfiguration.Make("kb-researcher", "Investigador KB", AgentStatus.Reading) with { WorkflowOnly = true },
+            FakeAgentConfiguration.Make("incident-responder", "Respondedor", AgentStatus.Working) with { WorkflowOnly = true },
+            FakeAgentConfiguration.Make("compliance-auditor", "Auditor", AgentStatus.Reviewing) with { WorkflowOnly = true }
+        });
+        h.Registry.Load(h.Configuration.Definitions);
+        h.Knowledge.Entries.Add(new KnowledgeEntry { Code = "SEG-003", Title = "Phishing", Keywords = new[] { "phishing" }, Body = Body, SourceFile = "kb.md" });
+        var doc = new OfficeDocument { FileName = "caso.pdf", PageCount = 1, Text = "Hice clic en un enlace de phishing." };
+        h.Documents.Add(doc);
+
+        h.Anthropic.Handler = (request, _) =>
+        {
+            var isRetry = request.Purpose == "agent:pdf-reader:claude-retry";
+            if (request.Purpose is "agent:pdf-reader" or "agent:pdf-reader:claude-retry")
+            {
+                var text = readerBehavior(isRetry);
+                return text is null ? throw new LlmException("proveedores gratuitos agotados") : Task.FromResult(FakeAnthropicService.Text(text));
+            }
+            return Task.FromResult(FakeAnthropicService.Text(request.Purpose == "agent:kb-researcher"
+                ? "CÓDIGO: SEG-003\nHECHOS DEL USUARIO:\n- Hizo clic en un enlace" : "ok"));
+        };
+        return (h, doc);
+    }
+
+    [Fact]
+    public async Task When_the_free_apis_fail_the_reader_retries_once_with_Claude_and_the_flow_continues()
+    {
+        var (h, doc) = Create(retry: true, isRetry => isRetry ? "RESUMEN DEL LECTOR: hizo clic en un enlace" : null);
+
+        var result = await h.Orchestration.HandleMessageAsync(new ChatRequestDto("Resuelve este caso", null, new[] { doc.Id }), CancellationToken.None);
+
+        Assert.Equal(TaskStatus.Completed, result.Tasks.Single(t => t.AgentId == "pdf-reader").Status);
+        var retry = Assert.Single(h.Anthropic.Requests, r => r.Purpose == "agent:pdf-reader:claude-retry");
+        Assert.Equal("claude", retry.ProviderPreference);
+        var researcher = h.Anthropic.Requests.Single(r => r.Purpose == "agent:kb-researcher").Messages[0].Content;
+        Assert.Contains("RESUMEN DEL LECTOR", researcher);                       // el Investigador recibe el resumen...
+        Assert.DoesNotContain("<documento", researcher);                          // ...nunca el documento
+        Assert.NotNull(result.Choice);                                            // el flujo siguió hasta las opciones
+    }
+
+    [Fact]
+    public async Task When_Claude_also_fails_the_flow_stops_with_the_usual_message()
+    {
+        var (h, doc) = Create(retry: true, _ => null);
+
+        var result = await h.Orchestration.HandleMessageAsync(new ChatRequestDto("Resuelve este caso", null, new[] { doc.Id }), CancellationToken.None);
+
+        Assert.Equal(TaskStatus.Failed, result.Tasks.Single(t => t.AgentId == "pdf-reader").Status);
+        Assert.Equal(2, h.Anthropic.Requests.Count(r => r.Purpose is "agent:pdf-reader" or "agent:pdf-reader:claude-retry"));   // un intento + UN reintento
+        Assert.Contains("No pude completar", result.Reply);
+        Assert.DoesNotContain(h.Anthropic.Requests, r => r.Purpose == "agent:kb-researcher");
+    }
+
+    [Fact]
+    public async Task With_the_flag_off_there_is_no_retry()
+    {
+        var (h, doc) = Create(retry: false, _ => null);
+
+        var result = await h.Orchestration.HandleMessageAsync(new ChatRequestDto("Resuelve este caso", null, new[] { doc.Id }), CancellationToken.None);
+
+        Assert.Equal(TaskStatus.Failed, result.Tasks.Single(t => t.AgentId == "pdf-reader").Status);
+        Assert.Single(h.Anthropic.Requests, r => r.Purpose is "agent:pdf-reader" or "agent:pdf-reader:claude-retry");
+    }
+}

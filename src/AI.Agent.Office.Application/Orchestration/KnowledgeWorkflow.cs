@@ -162,7 +162,8 @@ public sealed partial class KnowledgeWorkflow
             {
                 Id = "t0", AgentId = _options.ReaderAgentId, Title = "Leer y analizar el documento del caso",
                 Task = "Lee el/los documento(s) adjuntos y entrega al Investigador KB un resumen fiel del caso: qué ocurrió, quién, qué hizo la persona, fechas y datos concretos, y qué se pide. No recomiendes acciones, no inventes y señala lo que el documento no dice.",
-                Sensitive = sensitive || docsToClaudeOnly, IncludeDocuments = true, AllowFreeDocuments = !docsToClaudeOnly
+                Sensitive = sensitive || docsToClaudeOnly, IncludeDocuments = true, AllowFreeDocuments = !docsToClaudeOnly,
+                RetryWithClaude = _options.RetryReaderWithClaude
             });
             tasks.First(t => t.Id == "t1").DependsOn.Add("t0");
         }

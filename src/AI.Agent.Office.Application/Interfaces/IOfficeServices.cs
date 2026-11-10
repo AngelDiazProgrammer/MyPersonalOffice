@@ -50,7 +50,8 @@ public sealed record AgentRunResult(string Text, string? Provider);
 public interface IAgentRunner
 {
     /// <param name="containsDocuments">El prompt incluye documentos del usuario: solo puede ir a Claude.</param>
-    Task<AgentRunResult> RunAsync(AgentTask task, string prompt, bool containsDocuments, CancellationToken cancellationToken);
+    /// <param name="forceClaude">Fuerza el uso de Claude (reintento tras el fallo de las APIs gratuitas).</param>
+    Task<AgentRunResult> RunAsync(AgentTask task, string prompt, bool containsDocuments, CancellationToken cancellationToken, bool forceClaude = false);
 }
 
 /// <summary>Limita la ejecución: un agente a la vez y un máximo de agentes simultáneos.</summary>

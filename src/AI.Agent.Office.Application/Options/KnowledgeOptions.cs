@@ -40,6 +40,12 @@ public sealed class KnowledgeOptions
     /// </summary>
     public bool OfferSolutionChoice { get; set; } = true;
 
+    /// <summary>
+    /// true: si el Lector PDF falla, su tarea se reintenta una vez con Claude antes de interrumpir el flujo
+    /// (el documento viaja solo a Claude en ese reintento).
+    /// </summary>
+    public bool RetryReaderWithClaude { get; set; } = true;
+
     /// <summary>Mínimo de soluciones que necesita una situación para ofrecer una elección.</summary>
     public int MinSolutionsForChoice { get; set; } = 2;
 

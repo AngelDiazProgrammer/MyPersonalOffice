@@ -1,0 +1,26 @@
+{
+  "inputTokens": 1,
+  "outputTokens": 2,
+  "requests": 3,
+  "byAgent": [
+    {
+      "agentId": "dev",
+      "inputTokens": 1,
+      "outputTokens": 2,
+      "requests": 3
+    }
+  ],
+  "estimatedCostUsd": 0.5,
+  "freeInputTokens": 4,
+  "freeOutputTokens": 5,
+  "freeRequests": 6,
+  "byProvider": [
+    {
+      "provider": "groq",
+      "isFree": true,
+      "inputTokens": 1,
+      "outputTokens": 2,
+      "requests": 3
+    }
+  ]
+}

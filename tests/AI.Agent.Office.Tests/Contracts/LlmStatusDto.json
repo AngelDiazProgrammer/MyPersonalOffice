@@ -1,0 +1,14 @@
+{
+  "mode": "auto",
+  "freeProviders": [
+    {
+      "name": "groq",
+      "region": "us",
+      "model": "m",
+      "configured": true,
+      "coolingDown": false,
+      "error": null
+    }
+  ],
+  "claudeConfigured": true
+}

@@ -69,6 +69,8 @@ Web (Blazor) ──HTTP/SignalR──▶ Api ──▶ Application ──▶ Dom
                                    ╲──▶ Infrastructure (implementa contratos de Application)
 ```
 
+`Web` **no referencia ni ve `Infrastructure`**: usa solo contratos de `Application` (por ejemplo `IMarkdownRenderer`); `Api` es la raíz de composición que los conecta. Lo verifican las pruebas de arquitectura.
+
 | Proyecto | Responsabilidad |
 |---|---|
 | `AI.Agent.Office.Domain` | Entidades (`Agent`, `AgentTask`, `Conversation`, `ChatMessage`, `OfficeActivity`, `OfficeDocument`), enums, objetos de valor, eventos y `IOfficeEventPublisher`. Sin dependencias. |
@@ -104,7 +106,17 @@ Todo cambio de estado pasa por `AgentStateService`, que actualiza el registro y 
 | GET | `/api/tasks` · POST `/api/tasks/{id}/cancel` | Tareas / cancelar |
 | POST | `/api/documents` | Sube un PDF (valida y extrae; no se guarda el archivo) |
 | GET | `/api/office/state`, `/api/office/activity` | Estado completo / actividad |
-| GET | `/health` | Salud |
+| GET | `/health` | Vivo: la aplicación responde |
+| GET | `/health/ready` | Listo: 200 si hay agentes válidos, base de conocimiento cargada (si está activa) y al menos un proveedor de modelos; 503 si no. Solo estado por componente, sin rutas ni claves |
+
+### Registros
+
+La consola emite **JSON, una línea por evento**, con hora UTC y alcances `CorrelationId` (generado por el servidor para cada solicitud), `ConversationId`, `TaskId` y `AgentId`. Cada llamada a un modelo registra proveedor, modelo, duración y tokens; **nunca** el texto de los mensajes ni de las respuestas.
+
+### Documentación operativa
+
+- [Preparación para producción](docs/preparacion-produccion.md): lista comprobable antes de exponer la aplicación.
+- [Índice de decisiones](docs/decisiones.md): decisiones de diseño de cada especificación.
 
 ## APIs gratuitas primero y Claude solo si hace falta
 
@@ -143,6 +155,7 @@ La app usa **un único servicio global de APIs gratuitas** (`FreeApiService`): c
   2. *Entregar:* la persona elige con un botón (A–E), escribe la letra o "la recomendada", o escribe **su propia solución** en el campo de texto (el Auditor la contrasta con la base y la corrige si contradice una norma). Entonces el Respondedor redacta solo esa solución, el Redactor la formatea y el Auditor la verifica; se generan Word y PDF. "Cancelar" cierra el caso.
   - Si el mensaje siguiente trata de otra situación o trae otro PDF, se abre un caso nuevo. Una respuesta ambigua se repregunta sin gastar modelos.
   - Flag `Knowledge:OfferSolutionChoice` (`true`): con `false` se entrega el procedimiento recomendado directamente. Las situaciones con menos de 2 soluciones tampoco preguntan.
+- **Respaldo del Lector PDF** (`Knowledge:RetryReaderWithClaude`, `true` por defecto): si el Lector PDF falla con las APIs gratuitas, su tarea se reintenta **una sola vez con Claude** antes de interrumpir el flujo. El Investigador nunca recibe el documento directamente; si Claude tampoco responde (o estás en modo "Solo gratis"), el flujo se interrumpe como siempre.
 - **Flag `Knowledge:AllowFreeApisWithDocuments`** (`true` por defecto): con `true` el texto del PDF puede ir a las APIs gratuitas; con `false` toda tarea que lleve texto del PDF va solo a Claude. Las entradas confidenciales de la base siempre van solo a Claude.
 
 ## Documentos Word y PDF
@@ -205,9 +218,13 @@ Instrucciones del agente…
 
 ## Pruebas
 
+**Sondeos de seguridad reproducibles:** con la app en marcha, `python tests/security-probes/run_probes.py` ejecuta 34 comprobaciones (origen, CSRF, WebSocket, cabeceras, archivos, subidas y exportaciones) sin llamar a ningún modelo.
+
 ```bash
 dotnet test
 ```
+
+Incluyen pruebas de arquitectura (matriz de referencias entre proyectos), de contrato (instantáneas de los DTO públicos en `tests/AI.Agent.Office.Tests/Contracts/`; tras un cambio aprobado se regeneran con `UPDATE_CONTRACTS=1`), de registros, de salud y de documentación.
 
 Cubren: carga/validación de Markdown, registro de agentes, validación de decisiones y dependencias, límites de concurrencia, timeouts y cancelación, cambios de estado, aislamiento de errores, consolidación, validación y extracción de PDF, y `AnthropicService` (reintentos, mapeo de errores, la key nunca en el body ni en errores) con un `HttpMessageHandler` simulado. Las **pruebas de integración con Anthropic** se ejecutan solo si `ANTHROPIC_API_KEY` está definida; si no, aparecen como omitidas.
 

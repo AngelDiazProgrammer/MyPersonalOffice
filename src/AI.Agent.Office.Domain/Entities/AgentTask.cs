@@ -33,6 +33,9 @@ public sealed class AgentTask
     /// <summary>El flujo genera los documentos finales por sí mismo: no hay Word automático para esta tarea.</summary>
     public bool SkipDocument { get; init; }
 
+    /// <summary>Si la tarea falla, se reintenta una vez con Claude antes de darla por fallida (lo fija el flujo de conocimiento).</summary>
+    public bool RetryWithClaude { get; init; }
+
     /// <summary>
     /// Los documentos adjuntos de esta tarea pueden enviarse a las APIs gratuitas (lo fija el flujo de
     /// conocimiento).

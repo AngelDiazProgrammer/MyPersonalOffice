@@ -8,6 +8,7 @@ using AI.Agent.Office.Domain.Enums;
 using AI.Agent.Office.Domain.Events;
 using AI.Agent.Office.Domain.Interfaces;
 using AI.Agent.Office.Domain.ValueObjects;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
@@ -133,8 +134,9 @@ public sealed class OfficeHarness
     public OrchestrationOptions Options { get; }
     public OrchestrationService Orchestration { get; }
 
-    public OfficeHarness(Action<OrchestrationOptions>? configure = null, Action<KnowledgeOptions>? configureKnowledge = null)
+    public OfficeHarness(Action<OrchestrationOptions>? configure = null, Action<KnowledgeOptions>? configureKnowledge = null, ILoggerFactory? loggers = null)
     {
+        _loggers = loggers ?? NullLoggerFactory.Instance;
         Options = new OrchestrationOptions { ThinkingDisplayMs = 0, CompletedDisplaySeconds = 60, TaskTimeoutSeconds = 5 };
         configure?.Invoke(Options);
         var options = Microsoft.Extensions.Options.Options.Create(Options);
@@ -145,9 +147,9 @@ public sealed class OfficeHarness
         State = new AgentStateService(Registry, Events, NullLogger<AgentStateService>.Instance);
         Registry.Load(Configuration.Definitions);
 
-        var runner = new AgentRunner(Configuration, Anthropic, State, options, NullLogger<AgentRunner>.Instance);
+        var runner = new AgentRunner(Configuration, Anthropic, State, options, _loggers.CreateLogger<AgentRunner>());
         var executor = new PlanExecutor(Tasks, runner, new ExecutionLimiter(options), State, Events, Registry, Word, options,
-            NullLogger<PlanExecutor>.Instance);
+            _loggers.CreateLogger<PlanExecutor>());
 
         Workspaces = new WorkspaceService(Microsoft.Extensions.Options.Options.Create(new WorkspacesOptions()));
         var knowledgeOptions = new KnowledgeOptions { MinScore = 4 };
@@ -160,6 +162,7 @@ public sealed class OfficeHarness
         Orchestration = CreateOrchestration(Workspaces);
     }
 
+    private readonly ILoggerFactory _loggers;
     private readonly PlanExecutor _executor;
     private readonly KnowledgeWorkflow _workflow;
     private readonly IOptions<OrchestrationOptions> _options;
@@ -167,7 +170,7 @@ public sealed class OfficeHarness
     /// <summary>A second orchestration service sharing everything but the workspace selection (the workflow keeps its own).</summary>
     public OrchestrationService CreateOrchestration(IWorkspaceService workspaces) =>
         new(Anthropic, Configuration, Conversations, Tasks, Documents, State, Events,
-            _executor, _workflow, workspaces, Word, Word, Pending, _options, NullLogger<OrchestrationService>.Instance);
+            _executor, _workflow, workspaces, Word, Word, Pending, _options, _loggers.CreateLogger<OrchestrationService>());
 
     /// <summary>Anthropic fake: planning calls get <paramref name="decisionJson"/>, everything else is answered by <paramref name="agentReply"/>.</summary>
     public void Script(string decisionJson, Func<LlmRequest, CancellationToken, Task<LlmResponse>>? agentReply = null)

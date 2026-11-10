@@ -1,0 +1,13 @@
+{
+  "code": "C1",
+  "title": "Caso",
+  "recommendedId": "s1",
+  "options": [
+    {
+      "id": "s1",
+      "title": "Sol",
+      "summary": "Resumen",
+      "recommended": true
+    }
+  ]
+}

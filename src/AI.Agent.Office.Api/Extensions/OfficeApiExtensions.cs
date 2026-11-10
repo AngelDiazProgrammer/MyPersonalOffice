@@ -1,5 +1,6 @@
 using System.Text.Json.Serialization;
 using AI.Agent.Office.Api.Controllers;
+using AI.Agent.Office.Api.Health;
 using AI.Agent.Office.Api.Hubs;
 using AI.Agent.Office.Api.Middleware;
 using AI.Agent.Office.Application;
@@ -41,15 +42,8 @@ public static class OfficeApiExtensions
             .AllowAnyMethod()
             .AllowCredentials()));
 
-        // Límite de peticiones al chat (cada una puede gastar cupo o dinero de los modelos): por defecto 30 por minuto.
-        var chatPerMinute = configuration.GetValue("Office:ChatRequestsPerMinute", 30);
-        services.AddRateLimiter(o =>
-        {
-            o.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
-            o.AddPolicy(ChatRateLimitPolicy, context => RateLimitPartition.GetFixedWindowLimiter(
-                context.Connection.RemoteIpAddress?.ToString() ?? "local",
-                _ => new FixedWindowRateLimiterOptions { PermitLimit = chatPerMinute, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
-        });
+        AddOfficeRateLimiting(services, configuration);
+        services.AddOfficeHealth();
 
         // Mensajes de error de validación en español y sin detalles internos del framework.
         services.Configure<Microsoft.AspNetCore.Mvc.ApiBehaviorOptions>(o => o.InvalidModelStateResponseFactory = context =>
@@ -61,6 +55,43 @@ public static class OfficeApiExtensions
         });
 
         return services;
+    }
+
+    /// <summary>
+    /// Límite de peticiones al chat (cada una puede gastar cupo o dinero de los modelos): por defecto 30 por minuto por origen de red
+    /// (configurable con <c>Office:ChatRequestsPerMinute</c>). Las excedentes reciben 429.
+    /// </summary>
+    public static IServiceCollection AddOfficeRateLimiting(this IServiceCollection services, IConfiguration configuration)
+    {
+        var chatPerMinute = configuration.GetValue("Office:ChatRequestsPerMinute", 30);
+        return services.AddRateLimiter(o =>
+        {
+            o.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+            o.AddPolicy(ChatRateLimitPolicy, context => RateLimitPartition.GetFixedWindowLimiter(
+                context.Connection.RemoteIpAddress?.ToString() ?? "local",
+                _ => new FixedWindowRateLimiterOptions { PermitLimit = chatPerMinute, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
+        });
+    }
+
+    /// <summary>Registra las comprobaciones de «listo»: agentes, base de conocimiento y proveedores de modelos (spec 005, RF-004).</summary>
+    public static IServiceCollection AddOfficeHealth(this IServiceCollection services)
+    {
+        services.AddHealthChecks()
+            .AddCheck<AgentsReadyCheck>("agentes", tags: new[] { ReadinessTags.Ready })
+            .AddCheck<KnowledgeReadyCheck>("base-conocimiento", tags: new[] { ReadinessTags.Ready })
+            .AddCheck<ProvidersReadyCheck>("proveedores-modelos", tags: new[] { ReadinessTags.Ready });
+        return services;
+    }
+
+    /// <summary>Publica <c>/health/ready</c> (200 listo, 503 no listo) con el estado de cada componente y sin datos sensibles.</summary>
+    public static IEndpointRouteBuilder MapOfficeHealth(this IEndpointRouteBuilder endpoints)
+    {
+        endpoints.MapHealthChecks("/health/ready", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
+        {
+            Predicate = check => check.Tags.Contains(ReadinessTags.Ready),
+            ResponseWriter = ReadinessResponse.WriteAsync
+        });
+        return endpoints;
     }
 
     /// <summary>Nombre de la política de límite de peticiones del chat.</summary>
@@ -95,7 +126,8 @@ public static class OfficeApiExtensions
 
         app.MapControllers();
         app.MapHub<OfficeHub>(OfficeHub.Route);
-        app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
+        app.MapGet("/health", () => Results.Ok(new { status = "ok" }));      // «vivo»: la aplicación responde
+        app.MapOfficeHealth();                                                  // «listo»: sus componentes necesarios están cargados
         return app;
     }
 }

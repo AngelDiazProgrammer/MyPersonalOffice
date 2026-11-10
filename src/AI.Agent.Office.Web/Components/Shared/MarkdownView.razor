@@ -1,5 +1,6 @@
 @* Muestra texto Markdown de forma segura (sin HTML crudo, sin imágenes y solo con enlaces permitidos). *@
-@using AI.Agent.Office.Infrastructure.Documents
+@using AI.Agent.Office.Application.Interfaces
+@inject IMarkdownRenderer Markdown
 
 <div class="markdown">@((MarkupString)_html)</div>
 
@@ -13,6 +14,6 @@
     {
         if (_lastSource == Content) return;
         _lastSource = Content;
-        _html = SafeMarkdown.ToHtml(Content);
+        _html = Markdown.ToHtml(Content);
     }
 }

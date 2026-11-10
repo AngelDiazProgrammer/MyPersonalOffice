@@ -50,6 +50,9 @@ public sealed class PlannedTask
     /// <summary>El flujo genera los documentos finales por sí mismo: se omite el Word automático de esta tarea.</summary>
     [JsonIgnore] public bool SkipDocument { get; set; }
 
+    /// <summary>La fija el flujo: ante un fallo, la tarea se reintenta una vez con Claude.</summary>
+    [JsonIgnore] public bool RetryWithClaude { get; set; }
+
     [JsonIgnore] public bool AllowFreeDocuments { get; set; }
     [JsonIgnore] public bool Sensitive { get; set; }
 }

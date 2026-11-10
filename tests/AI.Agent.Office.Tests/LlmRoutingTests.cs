@@ -78,7 +78,8 @@ public class LlmRoutingTests
         Func<HttpRequestMessage, string, HttpResponseMessage>? claude = null,
         Action<LlmOptions>? configure = null,
         Dictionary<string, string?>? env = null,
-        string anthropicKey = "sk-ant-test")
+        string anthropicKey = "sk-ant-test",
+        Microsoft.Extensions.Logging.ILoggerFactory? loggers = null)
     {
         var freeHandler = new FakeHandler(free ?? ((_, _) => FakeHandler.Json(Reply("respuesta gratis"))));
         var claudeHandler = new FakeHandler(claude ?? ((_, _) => FakeHandler.Json(ClaudeText)));
@@ -97,7 +98,7 @@ public class LlmRoutingTests
         var anthropic = new AnthropicService(factory,
             Microsoft.Extensions.Options.Options.Create(new AnthropicOptions { ApiKey = anthropicKey, Model = "claude-test", MaxRetries = 0 }),
             usage, NullLogger<AnthropicService>.Instance);
-        var router = new RoutingLlmService(anthropic, freeService, options, NullLogger<RoutingLlmService>.Instance);
+        var router = new RoutingLlmService(anthropic, freeService, options, Microsoft.Extensions.Logging.LoggerFactoryExtensions.CreateLogger<RoutingLlmService>(loggers ?? Microsoft.Extensions.Logging.Abstractions.NullLoggerFactory.Instance));
         return new Rig { Free = freeHandler, Claude = claudeHandler, Router = router, FreeService = freeService, Usage = usage };
     }
 
@@ -277,6 +278,36 @@ public class LlmRoutingTests
         Assert.True(good.Ok);
         Assert.Equal("OK", good.Reply);
         Assert.False(unknown.Ok);
+    }
+
+    [Fact]
+    public async Task Every_provider_call_logs_provider_model_duration_and_tokens_without_the_message_content()
+    {
+        var capture = new AI.Agent.Office.Tests.TestSupport.CapturingLoggerProvider();
+        var rig = Create(loggers: capture.CreateFactory());
+
+        await rig.Router.SendAsync(new LlmRequest("sistema", new[] { new LlmMessage("user", "CONTENIDO-SECRETO-555") }, 200, Purpose: "agent:developer"));
+
+        var call = Assert.Single(capture.Entries, e => e.Message.StartsWith("Llamada a modelo"));
+        Assert.Equal("agent:developer", call.Fields["Purpose"]);
+        Assert.True(call.Fields.ContainsKey("Provider") && call.Fields.ContainsKey("Model"));
+        Assert.True(Convert.ToInt64(call.Fields["DurationMs"]) >= 0);
+        Assert.True(call.Fields.ContainsKey("InputTokens") && call.Fields.ContainsKey("OutputTokens"));
+        Assert.DoesNotContain(capture.Entries, e => e.Message.Contains("CONTENIDO-SECRETO-555") || e.Fields.Values.Any(v => v?.ToString()?.Contains("CONTENIDO-SECRETO-555") == true));
+    }
+
+    [Fact]
+    public async Task A_failed_provider_call_logs_its_duration_and_error_type_but_not_the_content()
+    {
+        var capture = new AI.Agent.Office.Tests.TestSupport.CapturingLoggerProvider();
+        var rig = Create(claude: (_, _) => FakeHandler.Json("""{"error":{"message":"fallo"}}""", HttpStatusCode.BadRequest), loggers: capture.CreateFactory());
+
+        await Assert.ThrowsAnyAsync<Exception>(() =>
+            rig.Router.SendAsync(new LlmRequest("sistema", new[] { new LlmMessage("user", "OTRO-SECRETO-777") }, 200, Purpose: "agent:qa", ProviderPreference: "claude")));
+
+        var failure = Assert.Single(capture.Entries, e => e.Message.StartsWith("Llamada a modelo") && e.Level == Microsoft.Extensions.Logging.LogLevel.Warning);
+        Assert.True(failure.Fields.ContainsKey("DurationMs") && failure.Fields.ContainsKey("ErrorType"));
+        Assert.DoesNotContain(capture.Entries, e => e.Message.Contains("OTRO-SECRETO-777"));
     }
 
     [Fact]

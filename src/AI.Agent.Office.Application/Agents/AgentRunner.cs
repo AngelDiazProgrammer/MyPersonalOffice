@@ -39,7 +39,7 @@ public sealed class AgentRunner : IAgentRunner
     /// Ejecuta una tarea de un agente: marca su estado, llama al modelo con sus instrucciones y devuelve el
     /// texto y el proveedor que respondió.
     /// </summary>
-    public async Task<AgentRunResult> RunAsync(AgentTask task, string prompt, bool containsDocuments, CancellationToken cancellationToken)
+    public async Task<AgentRunResult> RunAsync(AgentTask task, string prompt, bool containsDocuments, CancellationToken cancellationToken, bool forceClaude = false)
     {
         var definition = _configuration.GetDefinition(task.AgentId)
             ?? throw new InvalidOperationException($"El agente '{task.AgentId}' no está configurado.");
@@ -59,8 +59,8 @@ public sealed class AgentRunner : IAgentRunner
             MaxTokens: definition.ModelSettings.MaxTokens ?? _options.DefaultAgentMaxTokens,
             Model: definition.ModelSettings.Model,
             Temperature: definition.ModelSettings.Temperature,
-            Purpose: $"agent:{definition.Id}",
-            ProviderPreference: definition.ModelSettings.Provider,
+            Purpose: forceClaude ? $"agent:{definition.Id}:claude-retry" : $"agent:{definition.Id}",
+            ProviderPreference: forceClaude ? LlmProviders.Claude : definition.ModelSettings.Provider,
             FreeModel: definition.ModelSettings.FreeModel,
             Sensitive: containsDocuments);
 

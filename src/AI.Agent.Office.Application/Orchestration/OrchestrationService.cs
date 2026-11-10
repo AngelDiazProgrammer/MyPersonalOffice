@@ -108,6 +108,14 @@ public sealed class OrchestrationService : IOrchestrationService
         var conversation = _conversations.GetOrCreate(request.ConversationId);
         var userText = request.Message.Trim();
 
+        // Correlación (spec 005, RF-001): todos los registros de esta solicitud llevan el mismo identificador, generado SIEMPRE en el
+        // servidor (nunca aceptado del cliente) y sin texto del mensaje.
+        using var correlationScope = _logger.BeginScope(new Dictionary<string, object>
+        {
+            ["CorrelationId"] = Guid.NewGuid().ToString("N")[..12],
+            ["ConversationId"] = conversation.Id
+        });
+
         using var runCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         _conversations.RegisterRun(conversation.Id, runCts);
 
@@ -492,6 +500,7 @@ public sealed class OrchestrationService : IOrchestrationService
                 ExtraContext = planned.ExtraContext,
                 Sensitive = planned.Sensitive,
                 SkipDocument = planned.SkipDocument,
+                RetryWithClaude = planned.RetryWithClaude,
                 AllowFreeDocuments = planned.AllowFreeDocuments
             };
             _tasks.Add(task);

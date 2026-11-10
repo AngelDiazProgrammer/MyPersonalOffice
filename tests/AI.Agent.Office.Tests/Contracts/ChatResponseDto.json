@@ -1,0 +1,49 @@
+{
+  "conversationId": "11111111-1111-1111-1111-111111111111",
+  "reply": "hola",
+  "delegated": true,
+  "isError": false,
+  "planMessage": "plan",
+  "tasks": [
+    {
+      "id": "11111111-1111-1111-1111-111111111111",
+      "conversationId": "11111111-1111-1111-1111-111111111111",
+      "agentId": "dev",
+      "key": "t1",
+      "title": "T\u00EDtulo",
+      "description": "desc",
+      "status": "Completed",
+      "createdAt": "2026-01-01T00:00:00+00:00",
+      "startedAt": "2026-01-01T00:00:00+00:00",
+      "completedAt": "2026-01-01T00:00:00+00:00",
+      "result": "res",
+      "errorMessage": null,
+      "dependsOn": [
+        "t0"
+      ],
+      "documentId": "11111111-1111-1111-1111-111111111111",
+      "documentName": "doc.docx",
+      "provider": "claude"
+    }
+  ],
+  "documents": [
+    {
+      "id": "11111111-1111-1111-1111-111111111111",
+      "fileName": "informe.docx",
+      "sizeBytes": 10
+    }
+  ],
+  "choice": {
+    "code": "C1",
+    "title": "Caso",
+    "recommendedId": "s1",
+    "options": [
+      {
+        "id": "s1",
+        "title": "Sol",
+        "summary": "Resumen",
+        "recommended": true
+      }
+    ]
+  }
+}

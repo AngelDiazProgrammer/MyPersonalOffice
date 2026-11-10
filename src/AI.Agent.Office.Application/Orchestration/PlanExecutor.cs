@@ -92,6 +92,9 @@ public sealed class PlanExecutor
         var agent = _registry.Get(planned.AgentId);
         var agentName = agent?.Name ?? planned.AgentId;
 
+        // Los registros de esta tarea (y de las llamadas a proveedores que haga) llevan el id de la tarea y del agente.
+        using var taskScope = _logger.BeginScope(new Dictionary<string, object> { ["TaskId"] = taskId, ["AgentId"] = planned.AgentId });
+
         using var taskCts = CancellationTokenSource.CreateLinkedTokenSource(requestToken);
         _tasks.RegisterCancellation(taskId, taskCts);
         IAsyncDisposable? lease = null;
@@ -140,7 +143,20 @@ public sealed class PlanExecutor
                 planned.IncludeDocuments ? context.Documents : Array.Empty<OfficeDocument>(),
                 _options.MaxDocumentCharsPerTask, _options.MaxDependencyResultChars);
 
-            var run = await _runner.RunAsync(current, prompt, (planned.IncludeDocuments && context.Documents.Count > 0 && !planned.AllowFreeDocuments) || planned.Sensitive, taskCts.Token).ConfigureAwait(false);
+            var containsDocuments = (planned.IncludeDocuments && context.Documents.Count > 0 && !planned.AllowFreeDocuments) || planned.Sensitive;
+            AgentRunResult run;
+            try
+            {
+                run = await _runner.RunAsync(current, prompt, containsDocuments, taskCts.Token).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (planned.RetryWithClaude && ex is not OperationCanceledException)
+            {
+                // Respaldo (RF-014): si la tarea falla, se reintenta UNA sola vez con Claude antes de darla por fallida.
+                _logger.LogWarning("La tarea {TaskId} de {Agent} falló ({Error}); se reintenta una vez con Claude.", taskId, agentName, ex.GetType().Name);
+                await _events.EmitAsync(OfficeEventType.OfficeActivityUpdated,
+                    $"{agentName} no pudo con las APIs gratuitas; se reintenta con Claude.", planned.AgentId, taskId).ConfigureAwait(false);
+                run = await _runner.RunAsync(current, prompt, containsDocuments, taskCts.Token, forceClaude: true).ConfigureAwait(false);
+            }
             var result = run.Text;
 
             _tasks.Update(taskId, t => { t.Result = result; t.Provider = run.Provider; });

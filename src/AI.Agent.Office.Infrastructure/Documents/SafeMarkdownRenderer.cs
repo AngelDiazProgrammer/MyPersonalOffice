@@ -1,3 +1,4 @@
+using AI.Agent.Office.Application.Interfaces;
 using Markdig;
 using Markdig.Syntax;
 using Markdig.Syntax.Inlines;
@@ -6,9 +7,9 @@ namespace AI.Agent.Office.Infrastructure.Documents;
 
 /// <summary>
 /// Convierte Markdown a HTML seguro para mostrar respuestas de los modelos: sin HTML crudo, sin imágenes (una imagen externa
-/// podría filtrar datos a otro servidor) y con enlaces solo http, https, mailto o internos.
+/// podría filtrar datos a otro servidor) y con enlaces solo http, https, mailto o internos (reglas de la spec 003).
 /// </summary>
-public static class SafeMarkdown
+public sealed class SafeMarkdownRenderer : IMarkdownRenderer
 {
     private static readonly MarkdownPipeline Pipeline = new MarkdownPipelineBuilder()
         .UseAdvancedExtensions()
@@ -16,7 +17,7 @@ public static class SafeMarkdown
         .Build();
 
     /// <summary>Devuelve el HTML ya saneado del Markdown indicado.</summary>
-    public static string ToHtml(string? markdown)
+    public string ToHtml(string? markdown)
     {
         var document = Markdown.Parse(markdown ?? string.Empty, Pipeline);
 
