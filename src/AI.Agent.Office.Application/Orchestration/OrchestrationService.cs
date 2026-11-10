@@ -156,7 +156,12 @@ public sealed class OrchestrationService : IOrchestrationService
 
             #endregion
 
-            if (resolution is { Kind: ChoiceKind.Cancel })
+            if (pending is null && !string.IsNullOrWhiteSpace(request.ChoiceOptionId))
+            {
+                // Se eligió una opción (o se canceló) pero no hay caso pendiente: se responde aquí, sin gastar una llamada a un modelo.
+                decision = new OrchestratorDecision { Action = DecisionActions.Respond, Message = "No hay ningún caso esperando una elección. Cuéntame tu situación y la busco en la base de conocimiento." };
+            }
+            else if (resolution is { Kind: ChoiceKind.Cancel })
             {
                 _pending.Clear(conversation.Id);
                 decision = new OrchestratorDecision { Action = DecisionActions.Respond, Message = "Entendido, cierro este caso sin aplicar ninguna solución. Cuando quieras, cuéntame otro." };

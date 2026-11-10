@@ -22,6 +22,7 @@ public sealed class ChatController : ControllerBase
 
     /// <summary>Envía un mensaje al Orquestador (o una elección de solución) y devuelve la respuesta consolidada.</summary>
     [HttpPost]
+    [Microsoft.AspNetCore.RateLimiting.EnableRateLimiting(Extensions.OfficeApiExtensions.ChatRateLimitPolicy)]
     public async Task<ActionResult<ChatResponseDto>> Send([FromBody] ChatRequestDto request, CancellationToken cancellationToken) =>
         Ok(await _orchestration.HandleMessageAsync(request, cancellationToken));
 

@@ -1,17 +1,9 @@
-@* Muestra texto Markdown de forma segura (sin HTML crudo y solo con enlaces permitidos). *@
-@using Markdig
-@using Markdig.Syntax
-@using Markdig.Syntax.Inlines
+@* Muestra texto Markdown de forma segura (sin HTML crudo, sin imágenes y solo con enlaces permitidos). *@
+@using AI.Agent.Office.Infrastructure.Documents
 
 <div class="markdown">@((MarkupString)_html)</div>
 
 @code {
-    // El HTML crudo del texto está desactivado y solo se conservan los esquemas de enlace seguros.
-    private static readonly MarkdownPipeline Pipeline = new MarkdownPipelineBuilder()
-        .UseAdvancedExtensions()
-        .DisableHtml()
-        .Build();
-
     private string _lastSource = string.Empty;
     private string _html = string.Empty;
 
@@ -21,29 +13,6 @@
     {
         if (_lastSource == Content) return;
         _lastSource = Content;
-        _html = Render(Content);
-    }
-
-    private static string Render(string markdown)
-    {
-        var document = Markdown.Parse(markdown ?? string.Empty, Pipeline);
-        foreach (var link in document.Descendants<LinkInline>())
-        {
-            var url = link.Url ?? string.Empty;
-            var safe = url.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
-                       || url.StartsWith("https://", StringComparison.OrdinalIgnoreCase)
-                       || url.StartsWith("mailto:", StringComparison.OrdinalIgnoreCase)
-                       || url.StartsWith('#');
-            if (!safe && !link.IsImage) link.Url = "#";
-            if (link.IsImage && !(url.StartsWith("http://", StringComparison.OrdinalIgnoreCase) || url.StartsWith("https://", StringComparison.OrdinalIgnoreCase)))
-                link.Url = string.Empty;
-        }
-
-        using var writer = new StringWriter();
-        var renderer = new Markdig.Renderers.HtmlRenderer(writer);
-        Pipeline.Setup(renderer);
-        renderer.Render(document);
-        writer.Flush();
-        return writer.ToString();
+        _html = SafeMarkdown.ToHtml(Content);
     }
 }

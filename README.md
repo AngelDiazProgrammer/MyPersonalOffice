@@ -213,7 +213,15 @@ Cubren: carga/validación de Markdown, registro de agentes, validación de decis
 
 ## Seguridad
 
-API key solo en backend; errores sin stack traces (middleware central); validación de mensajes, extensión/MIME/firma/tamaño de PDF; archivos temporales eliminados siempre; CORS restringido a orígenes locales; `AllowedHosts` limitado a localhost; Markdown renderizado sin HTML crudo y con enlaces filtrados; los agentes no ejecutan comandos del sistema.
+- **Secretos:** las claves viven solo en el backend (`.env`, ignorado por git) y nunca llegan al navegador ni a los registros.
+- **Peticiones de otros sitios (CSRF y secuestro de WebSocket):** toda petición con `Origin` a `/api`, `/hubs` o `/_blazor` debe venir de un origen permitido (`Office:AllowedOrigins`, por defecto localhost) o del propio sitio; las que cambian algo en `/api` exigen además la cabecera `X-Office-Client` (la interfaz la envía sola). Si llamas a la API con scripts, agrégala.
+- **Cabeceras:** `Content-Security-Policy` (solo recursos propios, sin `unsafe-eval`), `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy` y `X-Frame-Options`.
+- **Respuestas de los modelos:** Markdown sin HTML crudo, **sin imágenes** (podrían filtrar datos a otro servidor) y con enlaces solo http, https, mailto o internos.
+- **Inyección de instrucciones desde PDF:** el texto del documento va entre etiquetas que se neutralizan si el PDF intenta cerrarlas, y los agentes reciben la regla de tratarlo como datos, no como órdenes.
+- **Límites:** 30 peticiones por minuto al chat (`Office:ChatRequestsPerMinute`), máximo de conversaciones y casos pendientes en memoria, subida de PDF validada por extensión, firma y tamaño, `AllowedHosts` limitado a localhost en ambos hosts.
+- **Errores:** sin trazas; los mensajes de los proveedores se limpian (sin identificadores de organización ni enlaces).
+- **Dependencias:** sin paquetes con vulnerabilidades conocidas (`dotnet list package --vulnerable --include-transitive`).
+- **Alcance:** pensada para un único usuario local y sin autenticación; no la expongas en una red compartida sin añadir inicio de sesión (las tareas, conversaciones y la actividad son visibles para quien alcance la API).
 
 ## Limitaciones conocidas
 

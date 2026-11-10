@@ -131,7 +131,7 @@ public sealed class AnthropicService : IAnthropicService
                     return parsed;
                 }
 
-                var apiMessage = ExtractErrorMessage(payload);
+                var apiMessage = Llm.ErrorText.Clean(ExtractErrorMessage(payload));
                 _logger.LogWarning("Anthropic {Purpose} devolvió {Status}: {Error}", purpose, (int)response.StatusCode, apiMessage);
 
                 if (RetryableStatusCodes.Contains(response.StatusCode) && attempt < maxAttempts)

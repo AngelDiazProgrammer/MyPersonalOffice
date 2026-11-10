@@ -27,10 +27,29 @@ public interface IPendingChoiceStore
 /// <summary>Implementación en memoria de <see cref="IPendingChoiceStore"/>.</summary>
 public sealed class PendingChoiceStore : IPendingChoiceStore
 {
-    private readonly ConcurrentDictionary<Guid, PendingKnowledgeCase> _items = new();
+    /// <summary>Máximo de casos pendientes en memoria y tiempo que se conservan.</summary>
+    public const int MaxPending = 200;
+    public static readonly TimeSpan Lifetime = TimeSpan.FromHours(6);
 
-    public void Set(Guid conversationId, PendingKnowledgeCase pending) => _items[conversationId] = pending;
-    public PendingKnowledgeCase? Get(Guid conversationId) => _items.TryGetValue(conversationId, out var p) ? p : null;
+    private readonly ConcurrentDictionary<Guid, (PendingKnowledgeCase Case, DateTimeOffset Created)> _items = new();
+
+    public void Set(Guid conversationId, PendingKnowledgeCase pending)
+    {
+        _items[conversationId] = (pending, DateTimeOffset.UtcNow);
+        if (_items.Count <= MaxPending) return;
+
+        // Limpieza: vencidos primero y, si aún sobran, los más antiguos.
+        foreach (var old in _items.OrderBy(i => i.Value.Created).Take(_items.Count - MaxPending).ToList()) _items.TryRemove(old.Key, out _);
+    }
+
+    public PendingKnowledgeCase? Get(Guid conversationId)
+    {
+        if (!_items.TryGetValue(conversationId, out var entry)) return null;
+        if (DateTimeOffset.UtcNow - entry.Created <= Lifetime) return entry.Case;
+        _items.TryRemove(conversationId, out _);
+        return null;
+    }
+
     public void Clear(Guid conversationId) => _items.TryRemove(conversationId, out _);
 }
 

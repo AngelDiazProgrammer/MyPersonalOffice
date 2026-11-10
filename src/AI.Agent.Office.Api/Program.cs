@@ -7,5 +7,6 @@ builder.Configuration.AddOfficeConfiguration();
 builder.Services.AddOfficeApi(builder.Configuration);
 
 var app = builder.Build();
+app.UseOfficeSecurity();
 app.UseOfficeApi();
 app.Run();

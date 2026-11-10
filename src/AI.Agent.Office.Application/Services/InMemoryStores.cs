@@ -13,6 +13,10 @@ public sealed class ConversationStore : IConversationStore
     private readonly object _gate = new();
     private readonly Dictionary<Guid, Conversation> _conversations = new();
     private readonly Dictionary<Guid, CancellationTokenSource> _runs = new();
+    private readonly Queue<Guid> _order = new();
+
+    /// <summary>Máximo de conversaciones en memoria: al superarlo se descartan las más viejas que no estén en curso.</summary>
+    public const int MaxConversations = 300;
 
     /// <summary>Devuelve la conversación indicada o crea una nueva si no existe.</summary>
     public Conversation GetOrCreate(Guid? conversationId)
@@ -22,7 +26,21 @@ public sealed class ConversationStore : IConversationStore
             if (conversationId is { } id && _conversations.TryGetValue(id, out var existing)) return existing;
             var conversation = conversationId is { } wanted ? new Conversation { Id = wanted } : new Conversation();
             _conversations[conversation.Id] = conversation;
+            _order.Enqueue(conversation.Id);
+            TrimOldConversations();
             return conversation;
+        }
+    }
+
+    /// <summary>Descarta las conversaciones más antiguas (sin ejecución en curso) para que la memoria no crezca sin límite.</summary>
+    private void TrimOldConversations()
+    {
+        var attempts = _order.Count;
+        while (_conversations.Count > MaxConversations && attempts-- > 0)
+        {
+            var oldest = _order.Dequeue();
+            if (_runs.ContainsKey(oldest)) _order.Enqueue(oldest);       // sigue en curso: se conserva
+            else _conversations.Remove(oldest);
         }
     }
 

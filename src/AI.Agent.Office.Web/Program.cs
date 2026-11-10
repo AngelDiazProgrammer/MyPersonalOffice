@@ -19,7 +19,8 @@ builder.Services.AddHttpClient<OfficeApiClient>((sp, client) =>
 {
     var options = sp.GetRequiredService<IOptions<WebApiOptions>>().Value;
     client.BaseAddress = new Uri(options.BaseUrl.TrimEnd('/') + "/");
-    client.Timeout = TimeSpan.FromMinutes(10); // a delegated request can take a while
+    client.Timeout = TimeSpan.FromMinutes(10); // una solicitud delegada puede tardar
+    client.DefaultRequestHeaders.Add("X-Office-Client", "web"); // la API exige esta cabecera a las peticiones que cambian algo
 });
 builder.Services.AddScoped<OfficeStateService>();
 
@@ -30,6 +31,7 @@ if (!app.Environment.IsDevelopment())
     app.UseExceptionHandler("/Error", createScopeForErrors: true);
 }
 
+app.UseOfficeSecurity();     // cabeceras de seguridad y bloqueo de peticiones de otros sitios (también protege el canal de Blazor)
 app.UseStaticFiles();
 app.UseAntiforgery();
 

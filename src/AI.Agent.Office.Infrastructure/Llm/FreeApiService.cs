@@ -320,7 +320,7 @@ public sealed partial class FreeApiService
     /// </summary>
     private LlmException ToException(Provider provider, HttpResponseMessage response, string payload)
     {
-        var detail = ExtractError(payload);
+        var detail = ErrorText.Clean(ExtractError(payload));
         var status = (int)response.StatusCode;
 
         switch (response.StatusCode)

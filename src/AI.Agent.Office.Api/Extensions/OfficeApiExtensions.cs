@@ -6,6 +6,7 @@ using AI.Agent.Office.Application;
 using AI.Agent.Office.Application.Interfaces;
 using AI.Agent.Office.Domain.Interfaces;
 using AI.Agent.Office.Infrastructure.DependencyInjection;
+using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Http.Features;
 
 namespace AI.Agent.Office.Api.Extensions;
@@ -33,15 +34,53 @@ public static class OfficeApiExtensions
 
         services.Configure<FormOptions>(o => o.MultipartBodyLengthLimit = 12 * 1024 * 1024);
 
-        var origins = configuration.GetSection("Office:AllowedOrigins").Get<string[]>()
-                      ?? new[] { "http://localhost:5080", "https://localhost:7080", "http://localhost:5081" };
+        var origins = GetAllowedOrigins(configuration);
         services.AddCors(o => o.AddPolicy(CorsPolicy, p => p
             .WithOrigins(origins)
             .AllowAnyHeader()
             .AllowAnyMethod()
             .AllowCredentials()));
 
+        // Límite de peticiones al chat (cada una puede gastar cupo o dinero de los modelos): por defecto 30 por minuto.
+        var chatPerMinute = configuration.GetValue("Office:ChatRequestsPerMinute", 30);
+        services.AddRateLimiter(o =>
+        {
+            o.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+            o.AddPolicy(ChatRateLimitPolicy, context => RateLimitPartition.GetFixedWindowLimiter(
+                context.Connection.RemoteIpAddress?.ToString() ?? "local",
+                _ => new FixedWindowRateLimiterOptions { PermitLimit = chatPerMinute, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
+        });
+
+        // Mensajes de error de validación en español y sin detalles internos del framework.
+        services.Configure<Microsoft.AspNetCore.Mvc.ApiBehaviorOptions>(o => o.InvalidModelStateResponseFactory = context =>
+        {
+            var tooLarge = context.ModelState.Values.SelectMany(v => v.Errors)
+                .Any(e => e.ErrorMessage.Contains("too large", StringComparison.OrdinalIgnoreCase));
+            var detail = tooLarge ? "El archivo o el contenido supera el tamaño permitido." : "La solicitud no tiene el formato esperado.";
+            return new Microsoft.AspNetCore.Mvc.BadRequestObjectResult(new { title = "Solicitud no válida", status = 400, detail, errors = new[] { detail } });
+        });
+
         return services;
+    }
+
+    /// <summary>Nombre de la política de límite de peticiones del chat.</summary>
+    public const string ChatRateLimitPolicy = "chat";
+
+    /// <summary>Orígenes permitidos para CORS, WebSocket y peticiones que cambian algo (configurables con Office:AllowedOrigins).</summary>
+    public static string[] GetAllowedOrigins(IConfiguration configuration) =>
+        configuration.GetSection("Office:AllowedOrigins").Get<string[]>()
+        ?? new[] { "http://localhost:5080", "https://localhost:7080", "http://localhost:5081" };
+
+    /// <summary>
+    /// Seguridad común a los dos hosts: cabeceras y bloqueo de peticiones de otros sitios (incluido el canal de Blazor).
+    /// Debe ir antes de CORS y de los endpoints.
+    /// </summary>
+    public static WebApplication UseOfficeSecurity(this WebApplication app)
+    {
+        var origins = GetAllowedOrigins(app.Configuration);
+        app.UseMiddleware<SecurityHeadersMiddleware>();
+        app.UseMiddleware<RequestGuardMiddleware>((IEnumerable<string>)origins);
+        return app;
     }
 
     /// <summary>
@@ -52,6 +91,7 @@ public static class OfficeApiExtensions
     {
         app.UseMiddleware<ExceptionHandlingMiddleware>();
         app.UseCors(CorsPolicy);
+        app.UseRateLimiter();
 
         app.MapControllers();
         app.MapHub<OfficeHub>(OfficeHub.Route);
