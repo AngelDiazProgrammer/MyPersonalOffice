@@ -5,7 +5,7 @@
 **Constitución:** v1.1.0 · **Maestro:** `.specify/maestros/02_SPECIFY.md` · **Fecha:** 2026-11-10
 
 ## Resumen
-Núcleo original de MyPersonalOffice: un Orquestador planifica y delega el trabajo a agentes definidos en Markdown; se ejecuta en paralelo con límites; se puede adjuntar un PDF; se exportan documentos Word/PDF; se cuenta el consumo de tokens; y una oficina 3D refleja el estado en tiempo real.
+Núcleo original de ATLAS: un Orquestador planifica y delega el trabajo a agentes definidos en Markdown; se ejecuta en paralelo con límites; se puede adjuntar un PDF; se exportan documentos Word/PDF; se cuenta el consumo de tokens; y una oficina 3D refleja el estado en tiempo real.
 
 ## Problema
 La persona quiere pedir un trabajo en lenguaje natural y que un equipo de agentes especializados lo resuelva de forma visible, controlada y barata, sin programar cada agente.

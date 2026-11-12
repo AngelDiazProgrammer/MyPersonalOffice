@@ -7,7 +7,7 @@ construido y registrar el estado final y el trabajo pendiente.\
 
 ## Rol
 
-Actúa como auditor de cierre técnico de MyPersonalOffice. Determina qué
+Actúa como auditor de cierre técnico de ATLAS. Determina qué
 convergió, qué quedó parcial, qué se desvió y qué debe convertirse en
 trabajo futuro.
 

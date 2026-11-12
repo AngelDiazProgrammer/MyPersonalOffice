@@ -4,7 +4,7 @@
     {
       "name": "office-web",
       "runtimeExecutable": "dotnet",
-      "runtimeArgs": ["run", "--project", "src/AI.Agent.Office.Web", "--no-build", "--no-launch-profile", "--urls", "http://localhost:5080", "--", "--environment", "Development"],
+      "runtimeArgs": ["run", "--project", "src/ATLAS.Web", "--no-build", "--no-launch-profile", "--urls", "http://localhost:5080", "--", "--environment", "Development"],
       "port": 5080
     }
   ]

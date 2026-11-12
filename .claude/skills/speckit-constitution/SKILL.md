@@ -13,7 +13,7 @@ disable-model-invocation: false
 <!-- maestro-mypersonaloffice -->
 ## Project rule (MANDATORY)
 
-The constitution of MyPersonalOffice (`.specify/memory/constitution.md`) must NOT be modified silently (Article 40). Any change must identify
+The constitution of ATLAS (`.specify/memory/constitution.md`) must NOT be modified silently (Article 40). Any change must identify
 the affected article, justify it, assess consequences and be explicitly approved by the project owner before it is written. AI agents may
 propose amendments but never approve them. If the user did not explicitly approve the exact change, stop and ask.
 

@@ -12,9 +12,9 @@ incertidumbres que puedan producir interpretaciones distintas,
 decisiones técnicas prematuras, retrabajo o criterios de aceptación
 incompletos.
 
-## Contexto de MyPersonalOffice
+## Contexto de ATLAS
 
-MyPersonalOffice es una oficina virtual multiagente con un Orquestador
+ATLAS es una oficina virtual multiagente con un Orquestador
 central, agentes especializados descritos en Markdown, C#/.NET y Blazor,
 arquitectura por capas y proveedores de IA intercambiables (Anthropic
 principal; Groq y Cloudflare alternativos). Usa este contexto solo para

@@ -1,4 +1,4 @@
-# Especificaciones de MyPersonalOffice
+# Especificaciones de ATLAS
 
 Índice de las especificaciones (Spec-Driven Development, Art. 27–30 de la constitución v1.1.0). Cada carpeta contiene, siguiendo los
 [maestros](../.specify/maestros/README.md): `spec.md` → `plan.md` → `tasks.md` → `analysis.md` → `convergence.md`.

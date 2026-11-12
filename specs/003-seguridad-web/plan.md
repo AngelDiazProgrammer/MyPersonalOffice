@@ -40,10 +40,10 @@ Sin cambios, salvo el saneado de sus mensajes de error.
 
 ## Cambios por proyecto/archivo
 - Api: `Middleware/SecurityMiddleware.cs`, `Extensions/OfficeApiExtensions.cs`, `Controllers/Controllers.cs`, `Program.cs`, `appsettings.json`.
-- Web: `Program.cs`, `Components/Shared/MarkdownView.razor`, `AI.Agent.Office.Web.csproj`.
+- Web: `Program.cs`, `Components/Shared/MarkdownView.razor`, `ATLAS.Web.csproj`.
 - Application: `Orchestration/PromptBuilder.cs`, `Services/InMemoryStores.cs`, `Orchestration/KnowledgeWorkflow.Choice.cs`, `Orchestration/OrchestrationService.cs`.
 - Infrastructure: `Documents/SafeMarkdown.cs`, `Llm/ErrorText.cs`, `Llm/FreeApiService.cs`, `Anthropic/AnthropicService.cs`.
-- Tests: `SecurityTests.cs`, `AI.Agent.Office.Tests.csproj` (referencia a Api).
+- Tests: `SecurityTests.cs`, `ATLAS.Tests.csproj` (referencia a Api).
 
 ## Pruebas
 `SecurityTests` (servidor real en puerto libre para guardia y cabeceras; saneador, prompts, topes, limpieza de errores, elección local). Verificación de paquetes con `dotnet list package --vulnerable`. Sondeos HTTP y comprobación en navegador.

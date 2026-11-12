@@ -6,7 +6,7 @@ La oficina puede **operar sitios web por ti** con Playwright (no es una librerí
 
 ## Cómo se usa (caso Gmail)
 
-1. Arranca la app (`dotnet run --project src/AI.Agent.Office.Web`) y abre **🌐 Conexiones** (enlace en la cabecera de la oficina, o `/conexiones`).
+1. Arranca la app (`dotnet run --project src/ATLAS.Web`) y abre **🌐 Conexiones** (enlace en la cabecera de la oficina, o `/conexiones`).
 2. **Agregar sitio**: id `gmail`, nombre `Gmail`, URL `https://mail.google.com/mail/u/0/#inbox`, dominios `google.com, gmail.com`. Como ya existe `playbooks/gmail.md`, se usa ese playbook (si no existiera, se crea una plantilla).
 3. **🔐 Iniciar sesión**: se abre el navegador visible; inicias sesión tú (incluido 2FA) y cierras la ventana. La sesión queda en el perfil `browser-data/profiles/gmail`. **No se guarda ninguna contraseña.**
 4. En el chat (oficina «Pruebas base de conocimiento»), tras resolver un caso, escribe por ejemplo *«envíalo por correo a jefe@empresa.com»*:
@@ -37,23 +37,23 @@ En «Conexiones» → **✏️ Editar conexión** puedes cambiar nombre, URL, do
 | Qué | Dónde |
 |---|---|
 | Especificación, plan y tareas | `specs/007-conectividad-navegadores/` |
-| Modelos (sitio, playbook, credenciales, resultado) | `src/AI.Agent.Office.Application/Browser/BrowserModels.cs` |
+| Modelos (sitio, playbook, credenciales, resultado) | `src/ATLAS.Application/Browser/BrowserModels.cs` |
 | Lectura/escritura de playbooks `.md` | `Application/Browser/PlaybookParser.cs` |
 | Seguridad: dominios permitidos, hosts privados, validación de sitios | `Application/Browser/BrowserPolicy.cs` |
 | **Ejecutor**: reproducción, exploración con modelo, reparación, grabación y propuesta | `Application/Browser/BrowserRunner.cs` |
 | Flujo del chat: preguntar → redactar → aprobar → ejecutar | `Application/Browser/BrowserWorkflow.cs` (se engancha en `Orchestration/OrchestrationService.cs`) |
 | Gestión de sitios, playbooks, propuestas, login y ejecución directa | `Application/Browser/BrowserManager.cs` |
 | Interfaces (sesión de navegador, almacenes) | `Application/Browser/IBrowserServices.cs` |
-| **Playwright** (perfil persistente, filtro de navegación, instantánea de la página) | `src/AI.Agent.Office.Infrastructure/Browser/PlaywrightSessionFactory.cs` |
+| **Playwright** (perfil persistente, filtro de navegación, instantánea de la página) | `src/ATLAS.Infrastructure/Browser/PlaywrightSessionFactory.cs` |
 | Sitios en `browser-data/sites.json`; playbooks en `playbooks/*.md` | `Infrastructure/Browser/BrowserStores.cs` |
 | Credenciales en `browser-data/credentials/<id>.md` (texto plano, pruebas) | `Infrastructure/Browser/MarkdownCredentialStore.cs` |
 | API REST `/api/browser/*` | `Api/Controllers/Controllers.cs` (`BrowserController`) |
-| Página «Conexiones» | `src/AI.Agent.Office.Web/Components/Pages/Connections.razor` |
+| Página «Conexiones» | `src/ATLAS.Web/Components/Pages/Connections.razor` |
 | Tarjeta de aprobación en el chat | `Web/Components/Chat/ChatMessageView.razor` |
 | Contrato del chat ampliado (`browserApproval`, aditivo) | `Application/DTOs/Dtos.cs` |
 | Configuración | sección `Browser` de `configuration/appsettings.json` |
 | Playbook de ejemplo | `playbooks/gmail.md` |
-| Pruebas | `tests/AI.Agent.Office.Tests/Browser*Tests.cs` |
+| Pruebas | `tests/ATLAS.Tests/Browser*Tests.cs` |
 
 ## Formato del playbook
 
@@ -98,7 +98,7 @@ Acciones: `ir`, `clic`, `escribir`, `teclear`, `esperar`, `seleccionar`, `verifi
 Por defecto se usa **Microsoft Edge** ya instalado (`Browser:Channel = msedge`), sin descargar nada. Para usar Chrome pon `chrome`. Para usar el Chromium de Playwright deja el canal vacío y descárgalo una vez:
 
 ```bash
-pwsh src/AI.Agent.Office.Web/bin/Debug/net8.0/playwright.ps1 install chromium
+pwsh src/ATLAS.Web/bin/Debug/net8.0/playwright.ps1 install chromium
 ```
 
 ## Páginas que borran lo que se escribe

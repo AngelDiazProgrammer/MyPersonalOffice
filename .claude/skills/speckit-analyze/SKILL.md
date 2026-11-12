@@ -14,7 +14,7 @@ disable-model-invocation: false
 ## Project master prompt (MANDATORY)
 
 Before running the steps below, read `.specify/maestros/06_ANALYZE.md` and follow it. It defines this command's single responsibility,
-its limits ("No hace"), the mandatory output structure and the delivery rules for MyPersonalOffice.
+its limits ("No hace"), the mandatory output structure and the delivery rules for ATLAS.
 Where the master prompt is stricter or narrower than this skill, the master prompt wins.
 Neither this skill nor the master prompt may override `.specify/memory/constitution.md`; if they conflict, the constitution prevails.
 

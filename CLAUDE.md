@@ -1,4 +1,4 @@
-# MyPersonalOffice · Reglas para agentes de desarrollo
+# ATLAS · Reglas para agentes de desarrollo
 
 Este proyecto sigue **Spec-Driven Development** (Spec Kit). Antes de tocar código o artefactos:
 
@@ -10,7 +10,7 @@ Este proyecto sigue **Spec-Driven Development** (Spec Kit). Antes de tocar códi
 
 ## Datos del proyecto
 
-- Solución .NET 8 por capas: `src/AI.Agent.Office.{Domain,Application,Infrastructure,Api,Web}` y `tests/AI.Agent.Office.Tests`.
+- Solución .NET 8 por capas: `src/ATLAS.{Domain,Application,Infrastructure,Api,Web}` y `tests/ATLAS.Tests`.
 - Agentes en `agents/*.md`; oficinas, proveedores de modelos y opciones en `configuration/appsettings.json`; secretos solo en `.env` (ignorado por git).
-- Comprobación estándar: `dotnet build AI.Agent.Office.sln` y `dotnet test AI.Agent.Office.sln` (detén antes cualquier instancia en ejecución de la app: bloquea los DLL).
+- Comprobación estándar: `dotnet build ATLAS.sln` y `dotnet test ATLAS.sln` (detén antes cualquier instancia en ejecución de la app: bloquea los DLL).
 - Código y documentación en español, con `#region` por funcionalidad en las clases grandes (ver README, "Convenciones del código").

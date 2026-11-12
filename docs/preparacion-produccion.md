@@ -1,18 +1,18 @@
 # Preparación para producción
 
-Lista de comprobación antes de exponer MyPersonalOffice fuera de tu equipo (Art. 36, spec 005). Cada punto indica **cómo comprobarlo**.
+Lista de comprobación antes de exponer ATLAS fuera de tu equipo (Art. 36, spec 005). Cada punto indica **cómo comprobarlo**.
 Hoy la aplicación está pensada para uso **local y de una sola persona**; los puntos marcados «pendiente» no están implementados a propósito (ver [decisiones](decisiones.md)).
 
 ## 1. Compilación y pruebas
-- [ ] `dotnet build AI.Agent.Office.sln` termina sin errores.
-- [ ] `dotnet test AI.Agent.Office.sln` termina sin fallos (incluye pruebas de arquitectura, contratos, seguridad y registros).
+- [ ] `dotnet build ATLAS.sln` termina sin errores.
+- [ ] `dotnet test ATLAS.sln` termina sin fallos (incluye pruebas de arquitectura, contratos, seguridad y registros).
 - [ ] `python tests/security-probes/run_probes.py` contra la aplicación en ejecución devuelve 34/34 (ver [tests/security-probes](../tests/security-probes/)).
 
 ## 2. Secretos y configuración
 - [ ] Las claves viven solo en `.env` o en variables de entorno; `.env` está en `.gitignore` (`git check-ignore .env`).
 - [ ] `.env.example` lista todas las variables que usa la aplicación y no contiene valores reales.
 - [ ] `Office:AllowedOrigins` en `configuration/appsettings.json` contiene únicamente las direcciones reales de la aplicación.
-- [ ] `AllowedHosts` de `src/AI.Agent.Office.Api/appsettings.json` y `src/AI.Agent.Office.Web/appsettings.json` no es `*` (lo verifica `AllowedHostsTests`).
+- [ ] `AllowedHosts` de `src/ATLAS.Api/appsettings.json` y `src/ATLAS.Web/appsettings.json` no es `*` (lo verifica `AllowedHostsTests`).
 - [ ] `Office:ChatRequestsPerMinute` ajustado al uso esperado (30 por defecto).
 
 ## 3. Estado de la aplicación

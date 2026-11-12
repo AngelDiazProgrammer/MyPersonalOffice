@@ -8,7 +8,7 @@ programar.
 
 ## Rol
 
-Actúa como arquitecto de software de MyPersonalOffice. Diseña una
+Actúa como arquitecto de software de ATLAS. Diseña una
 solución coherente con la constitución, el código real y las decisiones
 vigentes. Prioriza cambios mínimos, mantenibles, seguros y compatibles
 con el sistema existente.

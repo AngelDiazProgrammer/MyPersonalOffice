@@ -1,4 +1,4 @@
-# AI Agent Office
+# ATLAS
 
 Oficina virtual multiagente de uso personal. Conversas con un **Orquestador** que decide si responde él mismo o delega en agentes especialistas; todos ejecutan llamadas reales a Claude (API oficial de Anthropic) desde un backend .NET, y ves a los agentes trabajar en una oficina animada en tiempo real (SignalR).
 
@@ -27,23 +27,23 @@ Oficina virtual multiagente de uso personal. Conversas con un **Orquestador** qu
 ## Ejecución
 
 ```bash
-dotnet run --project src/AI.Agent.Office.Web
+dotnet run --project src/ATLAS.Web
 ```
 
 Abre automáticamente <http://localhost:5080>. El proyecto Web aloja la API y el hub de SignalR **en el mismo proceso**, así que un solo comando levanta todo.
 
-Desde Visual Studio: abre `AI.Agent.Office.sln` y ejecuta el perfil **AI Agent Office** del proyecto `AI.Agent.Office.Web`.
+Desde Visual Studio: abre `ATLAS.sln` y ejecuta el perfil **ATLAS** del proyecto `ATLAS.Web`.
 
 ### API independiente (opcional)
 
 ```bash
-dotnet run --project src/AI.Agent.Office.Api          # http://localhost:5081
+dotnet run --project src/ATLAS.Api          # http://localhost:5081
 ```
 
 Para que la UI la consuma en vez de alojarla: `Office__HostApi=false` y `Api__BaseUrl=http://localhost:5081`.
 
 ## Plataforma: acceso y secciones
-La aplicación pide **usuario y contraseña** (cookie de sesión HttpOnly, 8 h, bloqueo 5 min tras 5 fallos). El administrador inicial está en [`configuration/usuarios.md`](configuration/usuarios.md) **como hash PBKDF2** (la contraseña no se guarda en claro). Para cambiarla o agregar a alguien: `dotnet run --project src/AI.Agent.Office.Web -- --hash-contrasena "<clave>"` y pegar la línea en la tabla.
+La aplicación pide **usuario y contraseña** (cookie de sesión HttpOnly, 8 h, bloqueo 5 min tras 5 fallos). El administrador inicial está en [`configuration/usuarios.md`](configuration/usuarios.md) **como hash PBKDF2** (la contraseña no se guarda en claro). Para cambiarla o agregar a alguien: `dotnet run --project src/ATLAS.Web -- --hash-contrasena "<clave>"` y pegar la línea en la tabla.
 
 Menú lateral: **Oficinas virtuales** (Desarrollo, Base de conocimiento), **Chatbots** (los bots de `playbooks bots/`, ejecutados por el agente LectorUML), **Agentes conversacionales** (CamilaIA), **Agentes** (catálogo y gestión: crear, editar y eliminar, cada uno con su uso específico), **Conexiones** y **Logs** (registro en vivo en memoria, sin datos personales). Camila tiene su propio entorno; las oficinas de agentes conservan su comportamiento. Detalle: [specs/010-plataforma](specs/010-plataforma/spec.md).
 
@@ -78,12 +78,12 @@ Web (Blazor) ──HTTP/SignalR──▶ Api ──▶ Application ──▶ Dom
 
 | Proyecto | Responsabilidad |
 |---|---|
-| `AI.Agent.Office.Domain` | Entidades (`Agent`, `AgentTask`, `Conversation`, `ChatMessage`, `OfficeActivity`, `OfficeDocument`), enums, objetos de valor, eventos y `IOfficeEventPublisher`. Sin dependencias. |
-| `AI.Agent.Office.Application` | Orquestación (`OrchestrationService`, `PlanExecutor`), runner genérico de agentes, estado en memoria (singletons sincronizados), validadores, DTOs, interfaces (`IAnthropicService`, `IAgentConfigurationService`…). |
-| `AI.Agent.Office.Infrastructure` | `AnthropicService` (HttpClientFactory, reintentos, límites), lector de Markdown, extractor PDF (PdfPig), archivos temporales, `.env`. |
-| `AI.Agent.Office.Api` | Controladores finos, `OfficeHub` (SignalR), adaptador `SignalROfficeEventPublisher`, middleware de errores, CORS local. |
-| `AI.Agent.Office.Web` | UI Blazor: oficina 2D (un puesto por agente con su estado en vivo), chat con Markdown, tareas, actividad y página «Conexiones». Sin lógica de negocio ni llamadas a Anthropic. |
-| `AI.Agent.Office.Tests` | xUnit, sin API key. |
+| `ATLAS.Domain` | Entidades (`Agent`, `AgentTask`, `Conversation`, `ChatMessage`, `OfficeActivity`, `OfficeDocument`), enums, objetos de valor, eventos y `IOfficeEventPublisher`. Sin dependencias. |
+| `ATLAS.Application` | Orquestación (`OrchestrationService`, `PlanExecutor`), runner genérico de agentes, estado en memoria (singletons sincronizados), validadores, DTOs, interfaces (`IAnthropicService`, `IAgentConfigurationService`…). |
+| `ATLAS.Infrastructure` | `AnthropicService` (HttpClientFactory, reintentos, límites), lector de Markdown, extractor PDF (PdfPig), archivos temporales, `.env`. |
+| `ATLAS.Api` | Controladores finos, `OfficeHub` (SignalR), adaptador `SignalROfficeEventPublisher`, middleware de errores, CORS local. |
+| `ATLAS.Web` | UI Blazor: oficina 2D (un puesto por agente con su estado en vivo), chat con Markdown, tareas, actividad y página «Conexiones». Sin lógica de negocio ni llamadas a Anthropic. |
+| `ATLAS.Tests` | xUnit, sin API key. |
 
 ### Flujo de una solicitud
 
@@ -184,7 +184,7 @@ La app usa **un único servicio global de APIs gratuitas** (`FreeApiService`): c
 Cada agente de la oficina activa tiene un puesto con su avatar, rol, **estado en vivo** (en reposo, pensando, trabajando, leyendo, programando, revisando, esperando, completado, error) y la tarea actual. Haz clic en un puesto para ver su ficha: estado, tarea, historial reciente y tareas respondidas por APIs gratuitas o Claude (y cancelar la tarea actual). Solo refleja eventos reales; respeta `prefers-reduced-motion`.
 
 ## Camila IA: bots, LectorUML y CamilaIA
-El bot Camila (export de Dialogflow CX en `Bots/`, ignorado por git porque trae credenciales) queda descrito en un **playbook maestro** (`playbooks bots/camila/`: maestro, un playbook por flujo, catálogos y `notas.md` escritas a mano). Dos agentes lo usan: **LectorUML** (ejecutor sin modelo) ejecuta su flujo UML en *Chatbots*, y **CamilaIA** (agente con modelo) conversa libremente apoyándose en la narrativa `bases de conocimiento/CamilaIA.md`. Todo se genera con `dotnet run --project src/AI.Agent.Office.Web -- --bot-generar`. Los agentes se gestionan en la sección **Agentes**. Guía completa, seguridad y modos de webhook: [docs/camila-ia.md](docs/camila-ia.md).
+El bot Camila (export de Dialogflow CX en `Bots/`, ignorado por git porque trae credenciales) queda descrito en un **playbook maestro** (`playbooks bots/camila/`: maestro, un playbook por flujo, catálogos y `notas.md` escritas a mano). Dos agentes lo usan: **LectorUML** (ejecutor sin modelo) ejecuta su flujo UML en *Chatbots*, y **CamilaIA** (agente con modelo) conversa libremente apoyándose en la narrativa `bases de conocimiento/CamilaIA.md`. Todo se genera con `dotnet run --project src/ATLAS.Web -- --bot-generar`. Los agentes se gestionan en la sección **Agentes**. Guía completa, seguridad y modos de webhook: [docs/camila-ia.md](docs/camila-ia.md).
 
 ## Ahorro de tokens
 
@@ -235,7 +235,7 @@ Instrucciones del agente…
 dotnet test
 ```
 
-Incluyen pruebas de arquitectura (matriz de referencias entre proyectos), de contrato (instantáneas de los DTO públicos en `tests/AI.Agent.Office.Tests/Contracts/`; tras un cambio aprobado se regeneran con `UPDATE_CONTRACTS=1`), de registros, de salud y de documentación.
+Incluyen pruebas de arquitectura (matriz de referencias entre proyectos), de contrato (instantáneas de los DTO públicos en `tests/ATLAS.Tests/Contracts/`; tras un cambio aprobado se regeneran con `UPDATE_CONTRACTS=1`), de registros, de salud y de documentación.
 
 Cubren: carga/validación de Markdown, registro de agentes, validación de decisiones y dependencias, límites de concurrencia, timeouts y cancelación, cambios de estado, aislamiento de errores, consolidación, validación y extracción de PDF, y `AnthropicService` (reintentos, mapeo de errores, la key nunca en el body ni en errores) con un `HttpMessageHandler` simulado. Las **pruebas de integración con Anthropic** se ejecutan solo si `ANTHROPIC_API_KEY` está definida; si no, aparecen como omitidas.
 

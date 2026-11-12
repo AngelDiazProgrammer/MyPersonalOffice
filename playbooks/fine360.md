@@ -18,5 +18,4 @@ disparadores: entrar a dimar, ingresar a dimar, login dimar, iniciar sesion en d
 6. clic | button:has-text("Ingresar") | | Ingresar
 7. esperar | text=Información Casos | | Esperar el panel principal tras el login
 8. clic | button.mud-icon-button:has(svg path[d="M16.59 8.59L12 13.17 7.41 8.59 6 10l6 6 6-6z"]) | | Expandir menú
-9. esperar | espera 3 segundos | esperar
-10. clic | button:has-text("Logout") | Salir
+9. clic | button:has-text("Logout") | Salir

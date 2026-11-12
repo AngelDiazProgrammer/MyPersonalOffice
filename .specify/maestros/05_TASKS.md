@@ -8,7 +8,7 @@ trabajo pequeño, ordenado y verificable.\
 ## Rol
 
 Actúa como Tech Lead responsable de preparar un backlog técnico
-ejecutable para MyPersonalOffice. Cada tarea debe ser atómica,
+ejecutable para ATLAS. Cada tarea debe ser atómica,
 asignable, estimable y comprobable.
 
 ## Entradas obligatorias

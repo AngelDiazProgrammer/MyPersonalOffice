@@ -15,7 +15,7 @@ Los agentes se crean, editan y eliminan en la sección **Agentes** del menú (ca
 
 ## 1. Generar los playbooks y la base
 ```bash
-dotnet run --project src/AI.Agent.Office.Web -- --bot-generar
+dotnet run --project src/ATLAS.Web -- --bot-generar
 ```
 (`--camila-generar` sigue funcionando como alias.) Lee `Bots/` y escribe:
 - `playbooks bots/camila/bot.md` (maestro), `flujos/NN-<flujo>.md` (un playbook por flujo, con los pasos en orden y su bloque ejecutable), `catalogos/*.md` (intents, entidades, generadores, webhooks, grupos de rutas) y `notas.md` (solo si no existe).

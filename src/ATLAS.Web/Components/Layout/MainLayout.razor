@@ -1,0 +1,51 @@
+@* Diseño general de la plataforma (spec 010): menú lateral con las secciones y, a la derecha, el contenido de la sección. *@
+@inherits LayoutComponentBase
+@inject OfficeStateService Office
+@inject NavigationManager Nav
+
+<div class="platform">
+    <nav class="sidebar" aria-label="Secciones de la plataforma">
+        <a class="brand" href="/oficinas" title="ATLAS">
+            <span class="brand-icon">🏢</span>
+            <span class="brand-text"><b>ATLAS</b><span>Orquestador multiagente</span></span>
+        </a>
+
+        <div class="nav-group">
+            <NavLink class="nav-item" href="/oficinas" Match="NavLinkMatch.Prefix"><span>🏢</span> Oficinas virtuales</NavLink>
+            <NavLink class="nav-item" href="/chatbots" Match="NavLinkMatch.Prefix"><span>🧩</span> Chatbots</NavLink>
+            <NavLink class="nav-item" href="/conversacionales" Match="NavLinkMatch.Prefix"><span>💬</span> Agentes conversacionales</NavLink>
+            <NavLink class="nav-item" href="/agentes" Match="NavLinkMatch.Prefix"><span>🤖</span> Agentes</NavLink>
+            <NavLink class="nav-item" href="/conexiones" Match="NavLinkMatch.Prefix"><span>🔌</span> Conexiones</NavLink>
+            <NavLink class="nav-item" href="/logs" Match="NavLinkMatch.Prefix"><span>📜</span> Logs</NavLink>
+        </div>
+
+        <div class="sidebar-foot">
+            <AuthorizeView>
+                <Authorized>
+                    <span class="user-chip" title="Sesión iniciada">👤 @context.User.Identity?.Name</span>
+                </Authorized>
+            </AuthorizeView>
+            <button type="button" class="link-btn" title="Cerrar la sesión" @onclick="SignOut">⎋ Salir</button>
+        </div>
+    </nav>
+
+    <div class="platform-content">
+        <div class="app-shell">
+            @Body
+        </div>
+    </div>
+</div>
+
+<div id="blazor-error-ui" style="display:none">
+    Ocurrió un error inesperado en la interfaz.
+    <a href="" class="reload">Recargar</a>
+    <a class="dismiss">✕</a>
+</div>
+
+@code {
+    /// <summary>Carga oficinas, estado y proveedores una vez por conexión; las secciones lo necesitan todas.</summary>
+    protected override async Task OnInitializedAsync() => await Office.InitializeAsync();
+
+    // La salida es una petición HTTP normal (no navegación del router) para que el servidor borre la cookie.
+    private void SignOut() => Nav.NavigateTo("/auth/logout", forceLoad: true);
+}

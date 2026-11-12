@@ -1,0 +1,60 @@
+@* Oficina 2D: un puesto por agente con su estado en vivo y, al hacer clic, la ficha del agente. Solo refleja el estado y los eventos reales (no decide nada). *@
+@inherits OfficeComponentBase
+
+<div class="board" aria-label="Oficina virtual">
+    @foreach (var agent in Office.Agents)
+    {
+        <button type="button" class="tile st-@StatusInfo.Css(agent.Status) @(_selectedId == agent.Id ? "tile-selected" : string.Empty)"
+                style="--agent:@agent.Color" title="@agent.Role" aria-pressed="@(_selectedId == agent.Id)"
+                @onclick="() => Toggle(agent.Id)">
+            <span class="tile-bubble" aria-hidden="true">@StatusInfo.Bubble(agent.Status)</span>
+            <span class="tile-avatar" aria-hidden="true">@agent.Icon</span>
+            <b class="tile-name">@agent.Name@(agent.IsOrchestrator ? " ★" : string.Empty)</b>
+            <span class="tile-role">@agent.Role</span>
+            <span class="tile-status"><i class="strip-dot"></i>@StatusInfo.Label(agent.Status)</span>
+            <span class="tile-task">@(string.IsNullOrWhiteSpace(agent.CurrentTaskTitle) ? "Sin tarea" : agent.CurrentTaskTitle)</span>
+        </button>
+    }
+
+    @if (SelectedAgent is { } picked)
+    {
+        var myTasks = Office.Tasks.Where(t => t.AgentId == picked.Id).ToList();
+        var free = myTasks.Count(t => t.Provider?.StartsWith("free:") == true);
+        var cloud = myTasks.Count(t => !string.IsNullOrEmpty(t.Provider) && !t.Provider.StartsWith("free:"));
+        <aside class="agent-card" style="--agent:@picked.Color">
+            <header>
+                <span class="agent-card-icon">@picked.Icon</span>
+                <div>
+                    <b>@picked.Name</b>
+                    <span class="muted">@picked.Role</span>
+                </div>
+                <button type="button" class="agent-card-close" title="Cerrar" aria-label="Cerrar ficha" @onclick="() => _selectedId = null">✕</button>
+            </header>
+            <span class="status-chip chip-@StatusInfo.Css(picked.Status)"><i></i>@StatusInfo.Label(picked.Status)</span>
+            <div class="agent-card-task">@(string.IsNullOrWhiteSpace(picked.CurrentTaskTitle) ? "Sin tarea asignada" : picked.CurrentTaskTitle)</div>
+            <div class="agent-card-stats">
+                <span title="Tareas completadas">✅ @myTasks.Count(t => t.Status == TaskStatus.Completed)</span>
+                <span title="Respondidas por una API gratuita">🆓 @free</span>
+                <span title="Respondidas por Claude">☁️ @cloud</span>
+            </div>
+            @if (picked.CurrentTaskId is { } currentTask && !picked.IsOrchestrator)
+            {
+                <button type="button" class="link-btn" @onclick="() => Office.CancelTaskAsync(currentTask)">Cancelar tarea actual</button>
+            }
+            <ul class="agent-card-feed">
+                @foreach (var item in Office.Activity.Where(a => a.AgentId == picked.Id).Take(5))
+                {
+                    <li><span>@item.Timestamp.LocalDateTime.ToString("HH:mm:ss")</span> @item.Description</li>
+                }
+            </ul>
+        </aside>
+    }
+</div>
+
+@code {
+    private string? _selectedId;
+
+    private ATLAS.Application.DTOs.AgentDto? SelectedAgent => _selectedId is null ? null : Office.Agents.FirstOrDefault(a => a.Id == _selectedId);
+
+    private void Toggle(string id) => _selectedId = _selectedId == id ? null : id;
+}

@@ -8,7 +8,7 @@ aprobadas.
 
 ## Rol
 
-Actúa como ingeniero senior responsable de implementar MyPersonalOffice
+Actúa como ingeniero senior responsable de implementar ATLAS
 con cambios pequeños, seguros y verificables. Trabaja sobre el
 repositorio real y conserva los patrones existentes cuando sean
 adecuados.

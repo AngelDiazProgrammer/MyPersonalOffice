@@ -1,7 +1,7 @@
 """Sondeos de seguridad reproducibles contra una instancia en marcha de la aplicación (spec 003, T-014).
 
 Uso:   python tests/security-probes/run_probes.py [http://localhost:5080]
-Requisito: la aplicación debe estar corriendo (dotnet run --project src/AI.Agent.Office.Web).
+Requisito: la aplicación debe estar corriendo (dotnet run --project src/ATLAS.Web).
 No llama a ningún modelo (no gasta cupo ni dinero). Termina con código 1 si alguna comprobación falla.
 """
 import base64, http.client, json, os, socket, sys, urllib.parse, uuid, zipfile, io

@@ -32,7 +32,7 @@ Sección `Camila` de `configuration/appsettings.json` (`DefaultWebhookMode`, `We
 - Sin conexión a la red corporativa/VPN el modo Real falla con un mensaje comprensible.
 
 ## Pruebas
-`tests/AI.Agent.Office.Tests/CamilaTests.cs`: expresiones, webhooks (cuerpo, secreto, lista de hosts, modos, errores sin cuerpo), motor (botones, formulario, auto-rutas, bucles, no-match, confirmación), conversión (credenciales fuera del Markdown, determinismo, ida y vuelta), `.env` sin sobrescribir y las dos oficinas con un modelo simulado.
+`tests/ATLAS.Tests/CamilaTests.cs`: expresiones, webhooks (cuerpo, secreto, lista de hosts, modos, errores sin cuerpo), motor (botones, formulario, auto-rutas, bucles, no-match, confirmación), conversión (credenciales fuera del Markdown, determinismo, ida y vuelta), `.env` sin sobrescribir y las dos oficinas con un modelo simulado.
 
 ## Enmienda 2026-11-12
 - **D-9 (sustituida)** La Conversacional deja de usar `CamilaEngine`: `CamilaChatAgent` es un bucle de hasta 6 pasos (`responder` | `buscar` | `webhook`) sobre `CamilaKnowledgeText` (catálogo + búsqueda). El código impone hosts, secretos, datos faltantes, confirmación de escrituras, tope de búsquedas (2) y `Sensitive`. El motor solo atiende al UML.

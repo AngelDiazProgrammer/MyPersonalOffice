@@ -1,4 +1,4 @@
-# Prompts maestros de Spec-Driven Development · MyPersonalOffice
+# Prompts maestros de Spec-Driven Development · ATLAS
 
 Cada comando de Spec Kit tiene aquí un **prompt maestro** que fija su responsabilidad única, sus límites, su estructura de salida y sus reglas de entrega.
 Los skills de `.claude/skills/speckit-*/SKILL.md` los referencian y **deben seguirlos**. Ningún maestro puede contradecir
