@@ -1,0 +1,113 @@
+@* Espacio de una oficina de agentes (Desarrollo, Base de conocimiento): cabecera con el modo de modelos y el consumo, la oficina 2D, la actividad, las tareas y el chat. *@
+@inherits OfficeComponentBase
+
+<main class="split">
+    <section class="panel office-panel">
+        <header class="office-head">
+            <div>
+                <h1>@(Office.ActiveWorkspace?.Icon) @(Office.ActiveWorkspace?.Name ?? "Oficina")</h1>
+                <span class="muted">Oficina virtual multiagente</span>
+                <a class="link-btn" href="/oficinas" title="Volver a las oficinas virtuales">← Oficinas virtuales</a>
+            </div>
+            <div class="head-stats">
+                <label class="stat mode-select" title="Qué responde: APIs gratuitas primero (Claude solo si hace falta), solo Claude o solo gratis">
+                    <span class="mode-dot @(Office.Llm?.FreeProviders.Any(p => p.Configured) == true ? "on" : "off")"></span>
+                    <select value="@(Office.Llm?.Mode ?? "FreeFirst")" @onchange="OnModeChanged">
+                        <option value="FreeFirst">Gratis primero</option>
+                        <option value="ClaudeOnly">Solo Claude</option>
+                        <option value="FreeOnly">Solo gratis</option>
+                    </select>
+                    <span class="muted">@LocalLabel</span>
+                </label>
+                <span class="stat" title="Agentes trabajando ahora"><b>@Office.ActiveAgents.Count</b> activos</span>
+                <span class="stat" title="Llamadas a Claude desde que arrancó la app"><b>@Office.Usage.Requests</b> llamadas</span>
+                <details class="stat usage">
+                    <summary title="Tokens consumidos desde que arrancó la app (clic para ver el detalle)">
+                        <b>@Format(Office.Usage.InputTokens + Office.Usage.OutputTokens)</b> tokens
+                        @if (Office.Usage.EstimatedCostUsd is { } cost)
+                        {
+                            <span>· ≈ $@cost.ToString("0.000")</span>
+                        }
+                    </summary>
+                    <div class="usage-pop">
+                        <div class="usage-row usage-total">
+                            <span>Total</span>
+                            <span>@Format(Office.Usage.InputTokens) entrada · @Format(Office.Usage.OutputTokens) salida · @Office.Usage.Requests llamadas</span>
+                        </div>
+                        <div class="usage-section">Por proveedor (entrada / salida · llamadas)</div>
+                        @foreach (var row in ProviderRows)
+                        {
+                            <div class="usage-row @(row.CoolingDown ? "usage-paused" : string.Empty)" title="@row.Error">
+                                <span>@(row.IsFree ? "🆓" : "☁️") @row.Name@(row.CoolingDown ? " ⏸" : string.Empty)@(row.Error is null ? string.Empty : " ⚠️")@(row.Configured ? string.Empty : " (sin clave)")</span>
+                                <span>@Format(row.Input) / @Format(row.Output) · @row.Requests</span>
+                            </div>
+                        }
+                        <div class="usage-section">Por agente</div>
+                        @foreach (var u in Office.Usage.ByAgent)
+                        {
+                            var agent = Office.Agents.FirstOrDefault(a => a.Id == u.AgentId);
+                            <div class="usage-row">
+                                <span>@(agent?.Icon) @(agent?.Name ?? u.AgentId)</span>
+                                <span>@Format(u.InputTokens) / @Format(u.OutputTokens) · @u.Requests</span>
+                            </div>
+                        }
+                        @if (Office.Usage.EstimatedCostUsd is null)
+                        {
+                            <div class="muted">Costo estimado oculto: define <code>Pricing</code> en la configuración.</div>
+                        }
+                    </div>
+                </details>
+            </div>
+        </header>
+
+        <OfficeFloor />
+
+        <div class="office-bottom">
+            <ActivityFeed />
+            <TaskPanel />
+        </div>
+    </section>
+
+    <ChatPanel />
+</main>
+
+@code {
+    protected override async Task OnInitializedAsync()
+    {
+        await Office.InitializeAsync();
+    }
+
+    private sealed record ProviderRow(string Name, bool IsFree, bool Configured, bool CoolingDown, long Input, long Output, long Requests, string? Error = null);
+
+    // Una fila por proveedor: todos los gratuitos de la configuración (aunque aún no tengan uso) más Claude.
+    private IEnumerable<ProviderRow> ProviderRows
+    {
+        get
+        {
+            var used = (Office.Usage.ByProvider ?? Array.Empty<ProviderUsageDto>()).ToDictionary(p => p.Provider, StringComparer.OrdinalIgnoreCase);
+            foreach (var p in Office.Llm?.FreeProviders ?? Array.Empty<FreeProviderStatusDto>())
+            {
+                used.TryGetValue(p.Name, out var u);
+                yield return new ProviderRow(p.Name, true, p.Configured, p.CoolingDown, u?.InputTokens ?? 0, u?.OutputTokens ?? 0, u?.Requests ?? 0, p.Error);
+            }
+            used.TryGetValue("claude", out var c);
+            yield return new ProviderRow("Claude", false, Office.Llm?.ClaudeConfigured ?? true, false, c?.InputTokens ?? 0, c?.OutputTokens ?? 0, c?.Requests ?? 0);
+        }
+    }
+
+    private string LocalLabel => Office.Llm switch
+    {
+        null => string.Empty,
+        var l when !l.FreeProviders.Any(p => p.Configured) => "sin claves gratis",
+        var l => string.Join(" · ", l.FreeProviders.Where(p => p.Configured).Select(p => p.CoolingDown ? p.Name + " ⏸" : p.Name))
+    };
+
+    private Task OnModeChanged(ChangeEventArgs e) => Office.SetModeAsync(e.Value?.ToString() ?? "LocalFirst");
+
+    private static string Format(long value) => value switch
+    {
+        >= 1_000_000 => $"{value / 1_000_000d:0.0}M",
+        >= 1_000 => $"{value / 1_000d:0.0}k",
+        _ => value.ToString()
+    };
+}

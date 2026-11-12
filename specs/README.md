@@ -14,6 +14,12 @@ trazabilidad del Art. 30. **No sustituyen una aprobación previa que no existió
 | [003-seguridad-web](003-seguridad-web/spec.md) | Endurecimiento web y API (OWASP) | Aprobado con observaciones | PARCIAL (solo CA-006 manual) | Autenticación (punto nulo); pruebas de interfaz aplazadas |
 | [004-proveedores-gratuitos](004-proveedores-gratuitos/spec.md) | APIs gratuitas primero (Groq, Cloudflare, Gemini) y Claude | Aprobado con observaciones | COMPLETO (con observaciones) | Privacidad por proveedor; selector de proveedor |
 | [006-nucleo-oficina](006-nucleo-oficina/spec.md) | Orquestación, agentes en Markdown, PDF/Word, tokens y oficina 3D | Aprobado con observaciones | PARCIAL (3D solo manual) | Pruebas de interfaz / 3D |
+| [008-oficina-2d](008-oficina-2d/spec.md) | Retirada del 3D; puestos 2D con estado en vivo | Aprobado en chat | COMPLETO (con observaciones) | Pruebas de interfaz |
+| [009-camila-ia](009-camila-ia/spec.md) | Camila IA UML y Conversacional sobre el export de Dialogflow (`CamilaIA.md`) | Aprobado en chat | COMPLETO salvo prueba en vivo | T-012 (prueba en producción, a cargo de la persona responsable) |
+| [010-plataforma](010-plataforma/spec.md) | Login, menú por secciones, Logs y entorno propio de Camila | Aprobado en chat | COMPLETO salvo verificación final | Ver tareas |
+| [011-agentes](011-agentes/spec.md) | Catálogo de agentes con uso específico y gestión desde el front | Aprobado en chat | COMPLETO | — |
+| [012-playbooks-bots](012-playbooks-bots/spec.md) | Playbooks maestros de bots, LectorUML y CamilaIA como agentes | Aprobado en chat | COMPLETO | — |
+| [007-conectividad-navegadores](007-conectividad-navegadores/spec.md) | Playwright como servicio: sitios, playbooks, aprobación, aprendizaje y autorreparación | Aprobado en chat | COMPLETO (con observaciones) | Prueba real con Gmail (requiere tu sesión); enmienda constitucional propuesta |
 
 ## Propuestas pendientes de aprobación
 | Spec | Tema | Estado |

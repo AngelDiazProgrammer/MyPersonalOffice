@@ -1,5 +1,6 @@
 # Especificación 006 · Núcleo de la oficina
 
+**Nota (2026-11-10):** RF-011 y CA-014 (oficina 3D) fueron **sustituidos por la [spec 008](../008-oficina-2d/spec.md)** (oficina 2D).
 **Estado:** Implementada — especificación **retroactiva** (Art. 28 y 30). Redactada a partir del comportamiento verificado en el repositorio y sus pruebas; no sustituye una aprobación previa que no existió (Art. 29).
 **Constitución:** v1.1.0 · **Maestro:** `.specify/maestros/02_SPECIFY.md` · **Fecha:** 2026-11-10
 

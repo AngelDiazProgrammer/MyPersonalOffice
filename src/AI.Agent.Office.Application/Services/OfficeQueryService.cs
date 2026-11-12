@@ -87,7 +87,7 @@ public sealed class OfficeQueryService : IOfficeQueryService
         var available = _workspaces.GetAll().Select(w => new WorkspaceDto(w.Id, w.Name, w.Icon, w.Description,
             w.Agents.Select(id => definitions.FirstOrDefault(d => string.Equals(d.Id, id, StringComparison.OrdinalIgnoreCase)))
                 .Where(d => d is not null)
-                .Select(d => new WorkspaceAgentDto(d!.Id, d.Name, d.Icon, d.Role)).ToArray())).ToArray();
+                .Select(d => new WorkspaceAgentDto(d!.Id, d.Name, d.Icon, d.Role)).ToArray(), w.Kind)).ToArray();
         return new WorkspacesDto(available, _workspaces.Active?.Id, _workspaces.RequiresSelection);
     }
 

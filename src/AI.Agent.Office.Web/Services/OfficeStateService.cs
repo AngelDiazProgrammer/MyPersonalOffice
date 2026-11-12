@@ -19,7 +19,15 @@ public sealed class WebApiOptions
 public sealed record ChatItem(
     ChatRole Role, string Content, DateTimeOffset Time, bool IsError = false, string? PlanMessage = null,
     int TaskCount = 0, IReadOnlyList<GeneratedDocumentDto>? Documents = null,
-    KnowledgeChoiceDto? Choice = null);
+    KnowledgeChoiceDto? Choice = null, BrowserApprovalDto? Approval = null);
+
+/// <summary>Un entorno de pruebas: un bot (<c>bot</c>, lo ejecuta LectorUML) o un agente conversacional (<c>agent</c>).</summary>
+public sealed record EnvironmentTarget(string Kind, string Id, string Name, string Icon, string Description, string Executor)
+{
+    /// <summary>Destino que viaja en cada mensaje del chat («bot:camila», «agent:camila-ia»).</summary>
+    public string Wire => $"{Kind}:{Id}";
+    public bool IsBot => Kind == "bot";
+}
 
 /// <summary>Un PDF adjunto al próximo mensaje.</summary>
 public sealed record AttachedDocument(Guid Id, string FileName, int PageCount, bool RequiresOcr);
@@ -39,6 +47,7 @@ public sealed class OfficeStateService : IAsyncDisposable
     private readonly OfficeApiClient _api;
     private readonly WebApiOptions _options;
     private readonly ILogger<OfficeStateService> _logger;
+    private readonly string _internalToken;
     private readonly object _gate = new();
     private readonly List<AgentDto> _agents = new();
     private readonly List<AgentTaskDto> _tasks = new();
@@ -52,8 +61,9 @@ public sealed class OfficeStateService : IAsyncDisposable
     private bool _initialized;
 
     /// <summary>Crea el servicio con el cliente de la API y la configuración.</summary>
-    public OfficeStateService(OfficeApiClient api, IOptions<WebApiOptions> options, ILogger<OfficeStateService> logger)
+    public OfficeStateService(OfficeApiClient api, IOptions<WebApiOptions> options, ILogger<OfficeStateService> logger, AI.Agent.Office.Api.Auth.InternalApiToken internalToken)
     {
+        _internalToken = internalToken.Value;
         _api = api;
         _options = options.Value;
         _logger = logger;
@@ -61,7 +71,7 @@ public sealed class OfficeStateService : IAsyncDisposable
 
     public event Action? Changed;
 
-    /// <summary>Eventos de la oficina sin procesar, reenviados a la escena 3D para que los personajes reaccionen.</summary>
+    /// <summary>Eventos de la oficina sin procesar, reenviados a la interfaz (presentación).</summary>
     public event Func<OfficeEventDto, Task>? EventForwarded;
 
     public ConnectionStatus Connection => _hub?.Status ?? ConnectionStatus.Disconnected;
@@ -74,6 +84,8 @@ public sealed class OfficeStateService : IAsyncDisposable
     /// <summary>La persona debe elegir una oficina antes de usar la app.</summary>
     public bool WorkspaceRequired => Workspaces?.Required == true;
     /// <summary>Oficina abierta, o null.</summary>
+    /// <summary>Entorno de Camila abierto (bot o agente conversacional), o null si se usa una oficina de agentes.</summary>
+    public EnvironmentTarget? Target { get; private set; }
     public WorkspaceDto? ActiveWorkspace => Workspaces?.Available.FirstOrDefault(w => w.Id == Workspaces.ActiveId);
     public string? LastError { get; private set; }
     public bool IsUploading { get; private set; }
@@ -112,7 +124,7 @@ public sealed class OfficeStateService : IAsyncDisposable
         await RefreshSnapshotAsync();
         await RefreshLlmAsync();
 
-        _hub = new OfficeHubClient($"{_options.BaseUrl.TrimEnd('/')}/hubs/office");
+        _hub = new OfficeHubClient($"{_options.BaseUrl.TrimEnd('/')}/hubs/office", _internalToken);
         _hub.EventReceived += OnEventAsync;
         _hub.StatusChanged += _ => NotifyChanged();
         _hub.Reconnected += RefreshSnapshotAsync;
@@ -145,6 +157,7 @@ public sealed class OfficeStateService : IAsyncDisposable
         try
         {
             Workspaces = await _api.SelectWorkspaceAsync(id);
+            Target = null;
             ResetConversation();
             await RefreshSnapshotAsync();
             await RefreshLlmAsync();
@@ -159,10 +172,22 @@ public sealed class OfficeStateService : IAsyncDisposable
         try
         {
             Workspaces = await _api.ResetWorkspaceAsync();
+            Target = null;
             ResetConversation();
             await RefreshSnapshotAsync();
         }
         catch (Exception ex) { LastError = ex.Message; }
+        NotifyChanged();
+    }
+
+    /// <summary>
+    /// Abre el entorno de un bot (lo ejecuta LectorUML) o de un agente conversacional (spec 012). No toca la oficina abierta en el servidor:
+    /// el chat lleva su destino en cada mensaje. Empieza una conversación nueva.
+    /// </summary>
+    public void OpenTarget(EnvironmentTarget target)
+    {
+        ResetConversation();
+        Target = target;
         NotifyChanged();
     }
 
@@ -370,12 +395,12 @@ public sealed class OfficeStateService : IAsyncDisposable
 
         try
         {
-            var response = await _api.SendChatAsync(new ChatRequestDto(text, ConversationId, documentIds, choiceId), _sendCts.Token);
+            var response = await _api.SendChatAsync(new ChatRequestDto(text, ConversationId, documentIds, choiceId, Target?.Wire), _sendCts.Token);
             ConversationId = response.ConversationId;
             lock (_gate)
             {
                 _messages.Add(new ChatItem(ChatRole.Assistant, response.Reply, DateTimeOffset.Now,
-                    response.IsError, response.PlanMessage, response.Tasks.Count, response.Documents, response.Choice));
+                    response.IsError, response.PlanMessage, response.Tasks.Count, response.Documents, response.Choice, response.BrowserApproval));
             }
         }
         catch (OperationCanceledException)
@@ -395,6 +420,41 @@ public sealed class OfficeStateService : IAsyncDisposable
         }
 
         _ = RefreshTasksAsync();
+    }
+
+    /// <summary>
+    /// Aprueba el borrador del navegador con credenciales opcionales (no se guardan). El resultado se agrega al chat.
+    /// </summary>
+    public async Task ApproveBrowserAsync(string? username, string? password)
+    {
+        if (ConversationId is not { } id || IsSending) return;
+
+        IsSending = true;
+        LastError = null;
+        NotifyChanged();
+        try
+        {
+            var credentials = string.IsNullOrEmpty(username) && string.IsNullOrEmpty(password) ? null : new BrowserCredentialsDto(username, password);
+            var response = await _api.ApproveBrowserAsync(id, credentials);
+            lock (_gate) { _messages.Add(new ChatItem(ChatRole.Assistant, response!.Reply, DateTimeOffset.Now, response.Result is { Success: false })); }
+        }
+        catch (Exception ex)
+        {
+            lock (_gate) { _messages.Add(new ChatItem(ChatRole.Assistant, ex.Message, DateTimeOffset.Now, true)); }
+        }
+        finally
+        {
+            IsSending = false;
+            NotifyChanged();
+        }
+    }
+
+    /// <summary>Cancela el borrador del navegador pendiente.</summary>
+    public async Task CancelBrowserAsync()
+    {
+        if (ConversationId is { } id) await _api.CancelBrowserAsync(id);
+        lock (_gate) { _messages.Add(new ChatItem(ChatRole.Assistant, "Entendido, cancelé la operación en el navegador. No se hizo nada.", DateTimeOffset.Now)); }
+        NotifyChanged();
     }
 
     /// <summary>Cancela la solicitud en curso.</summary>

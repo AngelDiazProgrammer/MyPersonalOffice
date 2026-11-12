@@ -1,7 +1,11 @@
+using AI.Agent.Office.Api.Auth;
 using AI.Agent.Office.Api.Extensions;
 using AI.Agent.Office.Web.Components;
 using AI.Agent.Office.Web.Services;
 using Microsoft.Extensions.Options;
+
+// Camila IA (spec 009): `dotnet run --project src/AI.Agent.Office.Web -- --camila-generar` genera CamilaIA.md desde Bots/ y termina.
+if (OfficeCommands.TryRun(args, out var commandExitCode)) return commandExitCode;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Configuration.AddOfficeConfiguration();
@@ -12,6 +16,8 @@ builder.Logging.AddOfficeLogging();
 var hostApi = builder.Configuration.GetValue("Office:HostApi", true);
 if (hostApi) builder.Services.AddOfficeApi(builder.Configuration);
 
+builder.Services.AddOfficeAuth(builder.Configuration);      // acceso por usuario y contraseña (spec 010)
+builder.Services.AddCascadingAuthenticationState();
 builder.Services.AddOfficeRendering();   // contrato IMarkdownRenderer (Application); la implementación se compone en Api
 builder.Services.AddRazorComponents().AddInteractiveServerComponents();
 
@@ -22,6 +28,7 @@ builder.Services.AddHttpClient<OfficeApiClient>((sp, client) =>
     client.BaseAddress = new Uri(options.BaseUrl.TrimEnd('/') + "/");
     client.Timeout = TimeSpan.FromMinutes(10); // una solicitud delegada puede tardar
     client.DefaultRequestHeaders.Add("X-Office-Client", "web"); // la API exige esta cabecera a las peticiones que cambian algo
+    client.DefaultRequestHeaders.Add(InternalApiToken.HeaderName, sp.GetRequiredService<InternalApiToken>().Value); // identifica a la interfaz ante su propia API (nunca sale al navegador)
 });
 builder.Services.AddScoped<OfficeStateService>();
 
@@ -34,9 +41,12 @@ if (!app.Environment.IsDevelopment())
 
 app.UseOfficeSecurity();     // cabeceras de seguridad y bloqueo de peticiones de otros sitios (también protege el canal de Blazor)
 app.UseStaticFiles();
+app.UseOfficeAuth();         // sesión obligatoria en todo lo que no sea /login, /auth y /health
 app.UseAntiforgery();
+app.MapOfficeAuth();
 
 if (hostApi) app.UseOfficeApi();
 app.MapRazorComponents<App>().AddInteractiveServerRenderMode();
 
 app.Run();
+return 0;

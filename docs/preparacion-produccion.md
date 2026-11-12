@@ -38,3 +38,11 @@ Hoy la aplicación está pensada para uso **local y de una sola persona**; los p
 
 ## 7. Arquitectura
 - [ ] `Web` no referencia ni ve `Infrastructure` (`ArchitectureTests`).
+
+## Conectividad a navegadores (spec 007)
+- [ ] Revisar los sitios configurados en `browser-data/sites.json` y sus dominios permitidos; quitar los que no se usen.
+- [ ] Revisar los playbooks de `playbooks/` y las propuestas pendientes antes de aprobarlas (ninguna acción irreversible sin aprobación).
+- [ ] **Credenciales en texto plano:** `browser-data/credentials/*.md` guarda usuarios y claves sin cifrar (decisión solo para pruebas). Antes de producción: cifrarlas o moverlas a un gestor de secretos, y borrar esos archivos.
+- [ ] La carpeta `browser-data/profiles/` contiene sesiones iniciadas: protégela como una credencial y no la copies a otros equipos.
+- [ ] Con navegador invisible (`Browser:Headless=true`) solo tras haber comprobado el proceso en modo visible.
+- [ ] La aplicación no tiene autenticación: quien alcance la API podría pedir ejecuciones en tus sesiones. No la expongas en red.

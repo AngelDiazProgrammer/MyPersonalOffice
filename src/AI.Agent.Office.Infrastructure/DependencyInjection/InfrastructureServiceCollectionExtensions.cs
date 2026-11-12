@@ -1,3 +1,4 @@
+using AI.Agent.Office.Application.Browser;
 using AI.Agent.Office.Application.Interfaces;
 using AI.Agent.Office.Infrastructure.Agents;
 using AI.Agent.Office.Infrastructure.Anthropic;
@@ -53,6 +54,7 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddSingleton<ILlmRouterState>(sp => sp.GetRequiredService<RoutingLlmService>());
         services.AddSingleton<ILlmStatusService>(sp => sp.GetRequiredService<RoutingLlmService>());
         services.AddSingleton<IAgentConfigurationService, MarkdownAgentConfigurationService>();
+        services.AddSingleton<AI.Agent.Office.Application.Agents.IAgentFileStore, MarkdownAgentFileStore>();
         services.AddSingleton<IDocumentTextExtractor, PdfPigTextExtractor>();
 
         services.AddSingleton<IKnowledgeBaseService, AI.Agent.Office.Infrastructure.Knowledge.MarkdownKnowledgeBaseService>();
@@ -62,6 +64,18 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddSingleton<IWordDocumentGenerator, MarkdownWordGenerator>();
         services.AddSingleton<IPdfDocumentGenerator, MarkdownPdfGenerator>();
         services.AddSingleton<IGeneratedDocumentStore, AI.Agent.Office.Infrastructure.FileSystem.GeneratedDocumentStore>();
+
+        // Conectividad a navegadores (spec 007): Playwright tras interfaces de Application.
+        services.AddSingleton<IBrowserSiteStore, AI.Agent.Office.Infrastructure.Browser.JsonBrowserSiteStore>();
+        services.AddSingleton<IBrowserCredentialStore, AI.Agent.Office.Infrastructure.Browser.MarkdownCredentialStore>();
+        services.AddSingleton<IPlaybookStore, AI.Agent.Office.Infrastructure.Browser.MarkdownPlaybookStore>();
+        services.AddSingleton<IBrowserSessionFactory, AI.Agent.Office.Infrastructure.Browser.PlaywrightSessionFactory>();
+
+        // Camila IA (spec 009): la base se lee de CamilaIA.md y los webhooks salen por un cliente HTTP sin redirecciones.
+        services.AddSingleton<AI.Agent.Office.Application.Camila.ICamilaBotSource, AI.Agent.Office.Infrastructure.Camila.BotPlaybookSource>();
+        services.AddSingleton<AI.Agent.Office.Application.Camila.ICamilaHttpTransport, AI.Agent.Office.Infrastructure.Camila.HttpCamilaTransport>();
+        services.AddHttpClient(AI.Agent.Office.Infrastructure.Camila.HttpCamilaTransport.HttpClientName, client => client.Timeout = Timeout.InfiniteTimeSpan)
+            .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false });
 
         return services;
     }

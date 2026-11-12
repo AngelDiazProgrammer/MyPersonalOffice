@@ -150,7 +150,17 @@ public sealed partial class MarkdownAgentConfigurationService : IAgentConfigurat
             meta.GetValueOrDefault("color") ?? "#8b5cf6",
             meta.GetValueOrDefault("icon") ?? "🤖",
             string.Equals(meta.GetValueOrDefault("producesDocument"), "word", StringComparison.OrdinalIgnoreCase),
-            ParseBool(meta.GetValueOrDefault("workflowOnly")));
+            ParseBool(meta.GetValueOrDefault("workflowOnly")),
+            // Spec 011: uso específico, tipo, entorno, herramientas, base de conocimiento y datos personales. Los agentes anteriores siguen
+            // cargando: su uso sale de la descripción.
+            meta.GetValueOrDefault("purpose") ?? meta.GetValueOrDefault("description") ?? string.Empty,
+            Pick(meta.GetValueOrDefault("kind"), AgentKinds.All, AgentKinds.Llm),
+            Pick(meta.GetValueOrDefault("environment"), AgentEnvironments.All, AgentEnvironments.Office),
+            (meta.GetValueOrDefault("tools") ?? string.Empty).Trim('[', ']').Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(t => t.ToLowerInvariant()).Distinct().ToList(),
+            meta.GetValueOrDefault("knowledge") ?? string.Empty,
+            ParseBool(meta.GetValueOrDefault("sensitive")),
+            ParseBool(meta.GetValueOrDefault("system")) || SystemAgents.IsSystem(id));
     }
 
     /// <summary>Separa los metadatos del encabezado del cuerpo del archivo.</summary>
@@ -173,6 +183,10 @@ public sealed partial class MarkdownAgentConfigurationService : IAgentConfigurat
         var bodyStart = text.IndexOf('\n', end + 1);
         return (meta, bodyStart < 0 ? string.Empty : text[(bodyStart + 1)..]);
     }
+
+    /// <summary>El valor si está en la lista permitida (sin distinguir mayúsculas); si no, el predeterminado.</summary>
+    private static string Pick(string? value, string[] allowed, string fallback) =>
+        allowed.FirstOrDefault(a => string.Equals(a, value?.Trim(), StringComparison.OrdinalIgnoreCase)) ?? fallback;
 
     /// <summary>Lee un valor booleano de los metadatos (false si no es válido).</summary>
     private static bool ParseBool(string? value) => bool.TryParse(value, out var b) && b;

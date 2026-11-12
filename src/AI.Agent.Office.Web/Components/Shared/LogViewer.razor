@@ -1,0 +1,143 @@
+@* Registro en vivo de la plataforma (spec 010): consulta la API cada 2 s y muestra lo nuevo. Con «Compact» solo muestra los orígenes indicados. *@
+@implements IAsyncDisposable
+@inject OfficeApiClient Api
+
+<section class="@(Compact ? "log-panel log-compact" : "log-panel")">
+    <header class="log-head">
+        <h3>📜 @Title</h3>
+        <span class="muted">@Visible.Count de @_all.Count entradas · @(_paused ? "en pausa" : "en vivo")</span>
+        <span class="log-actions">
+            <button type="button" class="link-btn" @onclick="() => _paused = !_paused">@(_paused ? "▶ Reanudar" : "⏸ Pausar")</button>
+            <button type="button" class="link-btn" @onclick="ClearAsync">🧹 Limpiar</button>
+        </span>
+    </header>
+
+    <div class="log-filters">
+        @if (!Compact)
+        {
+            <select aria-label="Origen" @bind="_source">
+                <option value="">Todos los orígenes</option>
+                @foreach (var s in AllSources)
+                {
+                    <option value="@s">@s</option>
+                }
+            </select>
+        }
+        <select aria-label="Nivel" @bind="_level">
+            <option value="">Todos los niveles</option>
+            <option value="Info">Info</option>
+            <option value="Aviso">Aviso</option>
+            <option value="Error">Error</option>
+        </select>
+        <input type="search" placeholder="Filtrar por texto…" aria-label="Filtrar por texto" @bind="_text" @bind:event="oninput" />
+    </div>
+
+    @if (_error is not null)
+    {
+        <div class="banner banner-error">@_error</div>
+    }
+
+    <div class="log-list" role="log" aria-live="off">
+        @if (Visible.Count == 0)
+        {
+            <div class="empty">Sin entradas todavía. Lo que ocurra (webhooks, modelos, flujos, agentes) aparecerá aquí.</div>
+        }
+        @foreach (var e in Visible)
+        {
+            <div class="log-row log-@e.Level.ToLowerInvariant()">
+                <span class="log-time">@e.Time.ToString("HH:mm:ss")</span>
+                <span class="log-level">@e.Level</span>
+                <span class="log-src log-src-@Slug(e.Source)">@e.Source</span>
+                <span class="log-msg">@e.Message</span>
+                @if (!string.IsNullOrEmpty(e.ConversationId))
+                {
+                    <button type="button" class="log-conv" title="Filtrar por esta conversación" @onclick="() => _text = e.ConversationId!">#@e.ConversationId</button>
+                }
+            </div>
+        }
+    </div>
+</section>
+
+@code {
+    private const int MaxKept = 1500;
+    private static readonly string[] AllSources = { "Camila", "Webhook", "Modelo", "Agente", "Conexión", "Seguridad", "Sistema" };
+
+    private readonly List<LogEntryDto> _all = new();
+    private readonly CancellationTokenSource _cts = new();
+    private long _last;
+    private bool _paused;
+    private string _source = string.Empty;
+    private string _level = string.Empty;
+    private string _text = string.Empty;
+    private string? _error;
+
+    [Parameter] public bool Compact { get; set; }
+    [Parameter] public string Title { get; set; } = "Logs";
+    /// <summary>Orígenes a mostrar; vacío = todos.</summary>
+    [Parameter] public string[]? Sources { get; set; }
+
+    /// <summary>Entradas que pasan los filtros, de la más nueva a la más antigua.</summary>
+    private List<LogEntryDto> Visible => _all
+        .Where(e => (Sources is not { Length: > 0 } || Sources.Contains(e.Source))
+                    && (_source.Length == 0 || e.Source == _source)
+                    && (_level.Length == 0 || e.Level == _level)
+                    && (_text.Length == 0 || e.Message.Contains(_text, StringComparison.OrdinalIgnoreCase) || (e.ConversationId?.Contains(_text, StringComparison.OrdinalIgnoreCase) ?? false)))
+        .Reverse().Take(Compact ? 60 : 400).ToList();
+
+    protected override void OnInitialized() => _ = LoopAsync();
+
+    private async Task LoopAsync()
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(2));
+        try
+        {
+            do
+            {
+                if (!_paused) await PollAsync();
+            }
+            while (await timer.WaitForNextTickAsync(_cts.Token));
+        }
+        catch (OperationCanceledException) { }
+    }
+
+    private async Task PollAsync()
+    {
+        try
+        {
+            var result = await Api.GetLogsAsync(_last, _cts.Token);
+            if (result is null) return;
+            _error = null;
+            if (result.Last < _last) _all.Clear();            // el servidor se reinició
+            _last = result.Last;
+            if (result.Entries.Count > 0)
+            {
+                _all.AddRange(result.Entries);
+                if (_all.Count > MaxKept) _all.RemoveRange(0, _all.Count - MaxKept);
+            }
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex) { _error = "No se pudo leer el registro: " + ex.Message; }
+
+        await InvokeAsync(() =>
+        {
+            try { StateHasChanged(); }
+            catch (ObjectDisposedException) { }
+        });
+    }
+
+    private async Task ClearAsync()
+    {
+        try { await Api.ClearLogsAsync(); }
+        catch (Exception ex) { _error = ex.Message; }
+        _all.Clear();
+    }
+
+    private static string Slug(string source) => source.ToLowerInvariant().Replace("ó", "o");
+
+    public ValueTask DisposeAsync()
+    {
+        _cts.Cancel();
+        _cts.Dispose();
+        return ValueTask.CompletedTask;
+    }
+}

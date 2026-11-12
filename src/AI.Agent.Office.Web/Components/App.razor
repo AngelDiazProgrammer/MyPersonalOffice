@@ -8,20 +8,22 @@
     <title>AI Agent Office</title>
     <base href="/" />
     <link rel="icon" type="image/svg+xml" href="images/favicon.svg" />
-    <link rel="stylesheet" href="css/office.css" />
+    <link rel="stylesheet" href="css/office.css?v=@AssetVersion" />
     <HeadOutlet @rendermode="OfficeRenderMode" />
 </head>
 
 <body>
     <Routes @rendermode="OfficeRenderMode" />
     <script src="_framework/blazor.web.js"></script>
-    <script src="js/office.js"></script>
-    <script type="module" src="js/office3d.js"></script>
+    <script src="js/office.js?v=@AssetVersion"></script>
 </body>
 
 </html>
 
 @code {
+    // Cambia en cada arranque: el navegador no reutiliza un CSS/JS viejo tras actualizar la plataforma.
+    private static readonly string AssetVersion = DateTime.UtcNow.Ticks.ToString("x");
+
     // Sin prerenderizado: la página habla con SignalR, así que solo debe iniciarse dentro del circuito en vivo.
     private static readonly IComponentRenderMode OfficeRenderMode = new InteractiveServerRenderMode(prerender: false);
 }

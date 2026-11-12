@@ -1,0 +1,47 @@
+@* Abre el espacio pedido por la ruta: selecciona la oficina en el servidor (si no es la abierta) y muestra su contenido. *@
+@inherits OfficeComponentBase
+
+@if (Office.Workspaces is null)
+{
+    <main class="section-page"><p class="muted">Cargando…</p></main>
+}
+else if (Target is null)
+{
+    <main class="section-page">
+        <h1>No encontrado</h1>
+        <p class="muted">«@Id» no existe en esta sección.</p>
+        <a class="link-btn" href="@BackHref">← Volver</a>
+    </main>
+}
+else if (Office.ActiveWorkspace?.Id != Target.Id)
+{
+    <main class="section-page"><p class="muted">Abriendo @Target.Name…</p></main>
+}
+else
+{
+    @ChildContent
+}
+
+@code {
+    [Parameter, EditorRequired] public string Id { get; set; } = string.Empty;
+    /// <summary>Tipo esperado de oficina: vacío = oficina de agentes; «camila-uml» o «camila-conversacional».</summary>
+    [Parameter] public string Kind { get; set; } = string.Empty;
+    [Parameter] public string BackHref { get; set; } = "/oficinas";
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    private WorkspaceDto? Target =>
+        Office.Workspaces?.Available.FirstOrDefault(w => string.Equals(w.Id, Id, StringComparison.OrdinalIgnoreCase) && string.Equals(w.Kind ?? string.Empty, Kind, StringComparison.Ordinal));
+
+    private string? _selecting;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await Office.InitializeAsync();
+        if (Target is { } t && Office.ActiveWorkspace?.Id != t.Id && _selecting != t.Id)
+        {
+            _selecting = t.Id;
+            await Office.SelectWorkspaceAsync(t.Id);
+            _selecting = null;
+        }
+    }
+}

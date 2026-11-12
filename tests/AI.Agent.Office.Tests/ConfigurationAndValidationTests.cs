@@ -151,8 +151,16 @@ public class MarkdownConfigurationTests
         var report = service.ReloadAsync().GetAwaiter().GetResult();
 
         Assert.True(report.IsValid, string.Join("; ", report.Issues.Select(i => i.Message)));
-        Assert.Equal(10, report.Agents.Count);
+        Assert.Equal(12, report.Agents.Count);
         Assert.Single(report.Agents, a => a.IsOrchestrator);
+
+        // Spec 011/012: cada agente tiene su uso, y los dos agentes de Camila son del sistema.
+        Assert.All(report.Agents, a => Assert.False(string.IsNullOrWhiteSpace(a.Purpose), $"{a.Id} no tiene uso"));
+        var lector = Assert.Single(report.Agents, a => a.Id == "lector-uml");
+        Assert.Equal(("executor", "chatbot", true), (lector.Kind, lector.Environment, lector.IsSystem));
+        var camila = Assert.Single(report.Agents, a => a.Id == "camila-ia");
+        Assert.Equal(("llm", "conversational", true, true), (camila.Kind, camila.Environment, camila.IsSystem, camila.Sensitive));
+        Assert.True(camila.Allows("escribir_servicio") && camila.Allows("buscar_conocimiento"));
     }
 }
 

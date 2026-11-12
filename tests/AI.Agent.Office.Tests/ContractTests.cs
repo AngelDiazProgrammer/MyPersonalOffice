@@ -26,11 +26,12 @@ public class ContractTests
     private static AgentTaskDto Task1() => new(Id, Id, "dev", "t1", "Título", "desc", TaskStatus.Completed, Now, Now, Now, "res", null, new[] { "t0" }, Id, "doc.docx", "claude");
     private static TokenUsageDto Usage() => new(1, 2, 3, new[] { new AgentUsageDto("dev", 1, 2, 3) }, 0.5m, 4, 5, 6, new[] { new ProviderUsageDto("groq", true, 1, 2, 3) });
     private static GeneratedDocumentDto Doc() => new(Id, "informe.docx", 10);
+    private static BrowserApprovalDto Approval() => new(Id, "mail", "Correo", "Enviar correo", new[] { new BrowserFieldDto("asunto", "Hola") }, true);
     private static KnowledgeChoiceDto Choice() => new("C1", "Caso", "s1", new[] { new SolutionOptionDto("s1", "Sol", "Resumen", true) });
 
     public static IEnumerable<object[]> Contracts() => new[]
     {
-        new object[] { "ChatResponseDto", new ChatResponseDto(Id, "hola", true, false, "plan", new[] { Task1() }, new[] { Doc() }, Choice()) },
+        new object[] { "ChatResponseDto", new ChatResponseDto(Id, "hola", true, false, "plan", new[] { Task1() }, new[] { Doc() }, Choice(), Approval()) },
         new object[] { "AgentDto", Agent() },
         new object[] { "AgentTaskDto", Task1() },
         new object[] { "WorkspacesDto", new WorkspacesDto(new[] { new WorkspaceDto("w", "Oficina", "i", "desc", new[] { new WorkspaceAgentDto("dev", "Dev", "x", "rol") }) }, "w", false) },
@@ -39,6 +40,10 @@ public class ContractTests
         new object[] { "GeneratedDocumentDto", Doc() },
         new object[] { "KnowledgeChoiceDto", Choice() },
         new object[] { "TokenUsageDto", Usage() },
+        new object[] { "BrowserApprovalDto", Approval() },
+        new object[] { "BrowserSiteDto", new BrowserSiteDto("mail", "Correo", "https://mail.example.com", new[] { "example.com" }, false, true, true, true, "ana") },
+        new object[] { "BrowserRunResultDto", new BrowserRunResultDto(true, "ok", 1200, 7, "reproducción", 0, false, new[] { "✓ ir" }, new[] { new ExtractedRowDto("texto", "Ana", "ana@x.com", "Asunto", "Vista", "10 nov") }) },
+        new object[] { "PlaybookDto", new PlaybookDto("mail", "# md", new[] { "error" }, new[] { new PlaybookInputDto("asunto", "redactar", true) }, "# propuesta") },
     };
 
     private static string SnapshotPath(string name)

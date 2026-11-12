@@ -1,0 +1,26 @@
+@* Sección «Oficinas virtuales»: equipos de agentes (Desarrollo, Base de conocimiento) con su oficina 2D, tareas y chat. *@
+@page "/oficinas"
+@page "/oficinas/{Id}"
+@inherits OfficeComponentBase
+
+<PageTitle>Oficinas virtuales · Agent Office</PageTitle>
+
+@if (string.IsNullOrEmpty(Id))
+{
+    <SectionPicker Icon="🏢" Title="Oficinas virtuales"
+                   Description="Equipos de agentes especializados que el Orquestador coordina. Solo se despliegan los agentes necesarios."
+                   BaseHref="/oficinas" AgentsLabel="agentes" Items="Items" EmptyText="No hay oficinas configuradas." />
+}
+else
+{
+    <SpaceGate Id="@Id" Kind="" BackHref="/oficinas">
+        <OfficeSpace />
+    </SpaceGate>
+}
+
+@code {
+    [Parameter] public string? Id { get; set; }
+
+    private IReadOnlyList<WorkspaceDto> Items =>
+        Office.Workspaces?.Available.Where(w => string.IsNullOrEmpty(w.Kind)).ToList() ?? new List<WorkspaceDto>();
+}

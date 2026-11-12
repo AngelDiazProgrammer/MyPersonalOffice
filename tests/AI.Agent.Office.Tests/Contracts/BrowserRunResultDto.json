@@ -1,0 +1,22 @@
+{
+  "success": true,
+  "message": "ok",
+  "durationMs": 1200,
+  "stepsExecuted": 7,
+  "mode": "reproducci\u00F3n",
+  "modelCalls": 0,
+  "proposalCreated": false,
+  "log": [
+    "\u2713 ir"
+  ],
+  "data": [
+    {
+      "text": "texto",
+      "sender": "Ana",
+      "email": "ana@x.com",
+      "subject": "Asunto",
+      "snippet": "Vista",
+      "date": "10 nov"
+    }
+  ]
+}

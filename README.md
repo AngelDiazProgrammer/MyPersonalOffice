@@ -42,6 +42,11 @@ dotnet run --project src/AI.Agent.Office.Api          # http://localhost:5081
 
 Para que la UI la consuma en vez de alojarla: `Office__HostApi=false` y `Api__BaseUrl=http://localhost:5081`.
 
+## Plataforma: acceso y secciones
+La aplicación pide **usuario y contraseña** (cookie de sesión HttpOnly, 8 h, bloqueo 5 min tras 5 fallos). El administrador inicial está en [`configuration/usuarios.md`](configuration/usuarios.md) **como hash PBKDF2** (la contraseña no se guarda en claro). Para cambiarla o agregar a alguien: `dotnet run --project src/AI.Agent.Office.Web -- --hash-contrasena "<clave>"` y pegar la línea en la tabla.
+
+Menú lateral: **Oficinas virtuales** (Desarrollo, Base de conocimiento), **Chatbots** (los bots de `playbooks bots/`, ejecutados por el agente LectorUML), **Agentes conversacionales** (CamilaIA), **Agentes** (catálogo y gestión: crear, editar y eliminar, cada uno con su uso específico), **Conexiones** y **Logs** (registro en vivo en memoria, sin datos personales). Camila tiene su propio entorno; las oficinas de agentes conservan su comportamiento. Detalle: [specs/010-plataforma](specs/010-plataforma/spec.md).
+
 ## Oficinas (instancias)
 
 Al abrir la app **primero eliges una oficina**; solo se despliegan los agentes necesarios (menos desorden y lo personal queda aislado). Se define en `configuration/appsettings.json` → `Workspaces:Items` (id, nombre, icono, descripción y lista de agentes; el primero es el Orquestador):
@@ -52,7 +57,7 @@ Al abrir la app **primero eliges una oficina**; solo se despliegan los agentes n
 | 📚 **Pruebas base de conocimiento** | Orquestador, Lector PDF, Investigador KB, Respondedor de incidentes, Auditor de cumplimiento, Redactor Word (que también hace de *editor de formato*) |
 
 - La selección se guarda en el servidor (en memoria) y **se pide en cada arranque**; "cambiar de oficina" (cabecera) vuelve a la pantalla de selección y limpia la conversación.
-- Solo los agentes de la oficina activa participan: planificación del Orquestador, flujo de la base de conocimiento, panel, tareas y escena 3D (los escritorios sobrantes se ocultan). Sin `Workspaces` configurado no hay pantalla de selección y todos los agentes están disponibles.
+- Solo los agentes de la oficina activa participan: planificación del Orquestador, flujo de la base de conocimiento, panel, tareas y oficina 2D (los puestos sobrantes no se muestran). Sin `Workspaces` configurado no hay pantalla de selección y todos los agentes están disponibles.
 - API: `GET /api/workspaces`, `POST /api/workspaces/select` (`{"id":"base-conocimiento"}`), `POST /api/workspaces/reset`. Mientras no haya una oficina elegida, `POST /api/chat` responde 400.
 
 ## Cómo se usa
@@ -77,7 +82,7 @@ Web (Blazor) ──HTTP/SignalR──▶ Api ──▶ Application ──▶ Dom
 | `AI.Agent.Office.Application` | Orquestación (`OrchestrationService`, `PlanExecutor`), runner genérico de agentes, estado en memoria (singletons sincronizados), validadores, DTOs, interfaces (`IAnthropicService`, `IAgentConfigurationService`…). |
 | `AI.Agent.Office.Infrastructure` | `AnthropicService` (HttpClientFactory, reintentos, límites), lector de Markdown, extractor PDF (PdfPig), archivos temporales, `.env`. |
 | `AI.Agent.Office.Api` | Controladores finos, `OfficeHub` (SignalR), adaptador `SignalROfficeEventPublisher`, middleware de errores, CORS local. |
-| `AI.Agent.Office.Web` | UI Blazor: oficina 3D (three.js) animada, chat con Markdown, tareas y actividad. Sin lógica de negocio ni llamadas a Anthropic. |
+| `AI.Agent.Office.Web` | UI Blazor: oficina 2D (un puesto por agente con su estado en vivo), chat con Markdown, tareas, actividad y página «Conexiones». Sin lógica de negocio ni llamadas a Anthropic. |
 | `AI.Agent.Office.Tests` | xUnit, sin API key. |
 
 ### Flujo de una solicitud
@@ -106,6 +111,12 @@ Todo cambio de estado pasa por `AgentStateService`, que actualiza el registro y 
 | GET | `/api/tasks` · POST `/api/tasks/{id}/cancel` | Tareas / cancelar |
 | POST | `/api/documents` | Sube un PDF (valida y extrae; no se guarda el archivo) |
 | GET | `/api/office/state`, `/api/office/activity` | Estado completo / actividad |
+| GET/POST/PUT/DELETE | `/api/browser/sites[/{id}]` | Sitios de la conectividad a navegadores (spec 007) |
+| GET/PUT | `/api/browser/sites/{id}/playbook` | Lee / guarda el playbook `.md` del sitio (se valida) |
+| PUT/POST/DELETE | `/api/browser/sites/{id}/playbook/proposal[/approve]` | Propuesta aprendida: editar, aprobar (la activa) o descartar |
+| POST | `/api/browser/sites/{id}/login` | Abre el navegador visible para iniciar sesión a mano |
+| POST | `/api/browser/sites/{id}/runs` | Ejecución directa con valores y credenciales opcionales (no se guardan) |
+| POST | `/api/browser/pending/{conversationId}/approve` · `/cancel` | Aprueba o cancela el borrador pendiente del chat |
 | GET | `/health` | Vivo: la aplicación responde |
 | GET | `/health/ready` | Listo: 200 si hay agentes válidos, base de conocimiento cargada (si está activa) y al menos un proveedor de modelos; 503 si no. Solo estado por componente, sin rutas ni claves |
 
@@ -113,8 +124,13 @@ Todo cambio de estado pasa por `AgentStateService`, que actualiza el registro y 
 
 La consola emite **JSON, una línea por evento**, con hora UTC y alcances `CorrelationId` (generado por el servidor para cada solicitud), `ConversationId`, `TaskId` y `AgentId`. Cada llamada a un modelo registra proveedor, modelo, duración y tokens; **nunca** el texto de los mensajes ni de las respuestas.
 
+### Conectividad a navegadores (Playwright)
+
+La oficina puede operar sitios web por ti con Playwright: configuras el sitio en **🌐 Conexiones** (URL y, si quieres, usuario y clave, que se guardan en un `.md` por conexión, en texto plano, solo para pruebas), inicias sesión una vez a mano, y cada sitio tiene un playbook `playbooks/<id>.md` con sus preguntas y pasos. En el chat, un disparador («enviar correo») inicia las preguntas; el modelo redacta, **te muestra el borrador y solo ejecuta si lo apruebas**. El sistema aprende los procesos nuevos y los repite sin modelo. Los playbooks de **solo lectura** (por ejemplo «leer mis últimos 20 correos», `playbooks/gmail.md`) se ejecutan al pedirlos, sin aprobación, y muestran los resultados en una tabla. Explicación completa y paso a paso: [docs/conexiones-navegador.md](docs/conexiones-navegador.md).
+
 ### Documentación operativa
 
+- [Conexiones a navegadores](docs/conexiones-navegador.md): sitios, playbooks, aprendizaje y seguridad.
 - [Preparación para producción](docs/preparacion-produccion.md): lista comprobable antes de exponer la aplicación.
 - [Índice de decisiones](docs/decisiones.md): decisiones de diseño de cada especificación.
 
@@ -148,7 +164,6 @@ La app usa **un único servicio global de APIs gratuitas** (`FreeApiService`): c
 - **Respuesta:** formato entregado + línea de fuente (`📚 SEG-005 — … · ✔ Verificación … · 🧾 Formato …`). Investigador, Respondedor y Auditor son internos (`workflowOnly`) y no aparecen en la planificación libre.
 - **Entregable APA (Word + PDF):** al terminar, el sistema genera automáticamente el documento final en **.docx** y **.pdf** y los muestra como chips descargables en el chat. El título siempre es `Respuesta al incidente {CÓDIGO}: {título}` (el sistema lo normaliza aunque el modelo copie otro). `Knowledge:DocumentStyle`: `Auto` (APA si el formato activo menciona "APA"), `Apa` o `Default`.
   - **Estilo APA 7:** carta (Letter) con márgenes de 1", Times New Roman 12, interlineado doble, portada (título en negrita + autor/fecha), número de página arriba a la derecha, títulos de nivel 1 centrados en negrita, nivel 2 alineado a la izquierda en negrita, nivel 3 negrita cursiva, sangría de primera línea de 0,5" y **Referencias en página aparte** (con sangría francesa en el Word; en el PDF van alineadas a la izquierda porque QuestPDF no soporta sangría francesa).
-- En la oficina 3D el investigador **no se levanta**: los libros vuelan de la estantería a su escritorio.
 - **La base de conocimiento es siempre el primer filtro:** se busca con el mensaje **y** con el texto de los PDF adjuntos (y en el futuro con cualquier fuente: buzones, apps). Si hay coincidencia, corre el flujo fijo; con adjuntos, el **Lector PDF va primero**: lee y analiza el documento y le entrega el resumen del caso al Investigador KB (solo el lector recibe el texto del PDF); si no, sigue la planificación normal.
 - **Seguimiento con la persona (elegir solución):** cada situación de la base trae **5 soluciones** (`### Solución A · Título`, la recomendada lleva `(recomendada)`). El flujo ahora tiene dos fases:
   1. *Investigar:* el Investigador (con el resumen del Lector si hay PDF) identifica el caso. El chat responde con lo entendido y las opciones (armadas por el sistema desde la base, sin inventar) y **espera**; aún no hay Word ni PDF.
@@ -163,13 +178,13 @@ La app usa **un único servicio global de APIs gratuitas** (`FreeApiService`): c
 - **Agente Redactor Word** (`agents/word-writer.md`): escribe en Markdown y el sistema lo convierte a un `.docx` real con Open XML (estilos, títulos, listas numeradas, tablas, código, citas, enlaces, pie con número de página; A4). Se descarga con el chip 📝 del chat o de la tarea.
 - **Exportar a Word / PDF** cualquier respuesta del chat con los botones 📄 y 📕 (`POST /api/documents/word` y `POST /api/documents/pdf`, cuerpo `{title, markdown, style?}` con `style: "apa"` para APA). El PDF usa [QuestPDF](https://www.questpdf.com) con **licencia Community** (gratis para particulares y empresas con menos de 1 M USD de ingresos anuales; revisa su licencia si tu caso es otro).
 - Los archivos se guardan en `generated-documents/` (24 h de retención, nombres saneados). Descarga: `GET /api/documents/generated/{id}`.
-- Cuando el Redactor termina, el personaje 3D va a la **impresora** antes de entregar el documento.
 
-## Oficina 3D: interacciones
+## Oficina 2D
 
-**Reglas de movimiento:** mientras hay trabajo, solo caminan el **Orquestador** (asigna tareas, va a la pizarra) y el agente que **entrega** su resultado al siguiente; el resto trabaja sentado con animaciones propias de su rol (libros, lupa, portapapeles, símbolos flotantes). Cuando se entrega la respuesta, el Orquestador recorre el equipo y **felicita a todos los agentes que participaron** (👏 ¡Bien hecho!), y al final todos celebran con confeti. Solo cuando **todos están libres** vuelven los cafés, las charlas y los estiramientos; si llega trabajo nuevo, esas caminatas sociales se cancelan.
+Cada agente de la oficina activa tiene un puesto con su avatar, rol, **estado en vivo** (en reposo, pensando, trabajando, leyendo, programando, revisando, esperando, completado, error) y la tarea actual. Haz clic en un puesto para ver su ficha: estado, tarea, historial reciente y tareas respondidas por APIs gratuitas o Claude (y cancelar la tarea actual). Solo refleja eventos reales; respeta `prefers-reduced-motion`.
 
-Personajes con rasgos propios (peinado, ropa, accesorios), 8 puestos, TV con el estado en vivo, reloj en hora real, impresora, cafetera con vapor, estantería, sofá y sala de reuniones. Reaccionan a eventos reales: entrega de tareas, resultados pasados entre agentes (con choque de manos), impresión de documentos, partículas de código al programar, signos de pregunta al pensar, confeti al terminar, y en reposo toman café, charlan, se estiran o miran el móvil. **Clic en un personaje**: la cámara lo sigue y aparece su ficha (estado, tarea, historial, tareas gratis/Claude).
+## Camila IA: bots, LectorUML y CamilaIA
+El bot Camila (export de Dialogflow CX en `Bots/`, ignorado por git porque trae credenciales) queda descrito en un **playbook maestro** (`playbooks bots/camila/`: maestro, un playbook por flujo, catálogos y `notas.md` escritas a mano). Dos agentes lo usan: **LectorUML** (ejecutor sin modelo) ejecuta su flujo UML en *Chatbots*, y **CamilaIA** (agente con modelo) conversa libremente apoyándose en la narrativa `bases de conocimiento/CamilaIA.md`. Todo se genera con `dotnet run --project src/AI.Agent.Office.Web -- --bot-generar`. Los agentes se gestionan en la sección **Agentes**. Guía completa, seguridad y modos de webhook: [docs/camila-ia.md](docs/camila-ia.md).
 
 ## Ahorro de tokens
 
@@ -182,10 +197,6 @@ Todo es configurable en `configuration/appsettings.json` (secciones `Orchestrati
 - **Límites de salida:** planificación 1024 tokens (`PlanningMaxTokens`), resultados previos recortados al pasarlos a otro agente o al consolidar (`MaxDependencyResultChars`, `MaxResultCharsForConsolidation`).
 - **Modelo por agente:** en el front matter de un agente puedes poner `model:` (por ejemplo, un modelo más barato solo para el Orquestador).
 - El encabezado muestra los tokens totales y por agente (clic para el detalle).
-
-## Vista 3D
-
-La oficina es una escena WebGL real (three.js r160, incluida en `wwwroot/lib/three`, MIT, funciona sin internet): luces y sombras, ciudad nocturna en las ventanas, pantallas animadas según el estado de cada agente y personajes que caminan, se sientan y se pasan trabajo según los eventos reales. Arrastra para rotar, rueda para zoom, doble clic para restablecer la cámara. Requiere un navegador con WebGL.
 
 ## Agentes y roles en Markdown
 
@@ -238,6 +249,7 @@ Cubren: carga/validación de Markdown, registro de agentes, validación de decis
 - **Límites:** 30 peticiones por minuto al chat (`Office:ChatRequestsPerMinute`), máximo de conversaciones y casos pendientes en memoria, subida de PDF validada por extensión, firma y tamaño, `AllowedHosts` limitado a localhost en ambos hosts.
 - **Errores:** sin trazas; los mensajes de los proveedores se limpian (sin identificadores de organización ni enlaces).
 - **Dependencias:** sin paquetes con vulnerabilidades conocidas (`dotnet list package --vulnerable --include-transitive`).
+- **Navegador (spec 007):** las credenciales de cada conexión se guardan en `browser-data/credentials/<id>.md` en **texto plano, solo para entorno de pruebas** (carpeta en `.gitignore`; no vuelven por la API, ni van a registros ni a modelos); el navegador solo navega; el navegador solo navega a los dominios permitidos de cada sitio; ninguna acción irreversible se ejecuta sin tu aprobación; lo que lee la página y se envía a un modelo va solo a Claude (`Sensitive`).
 - **Alcance:** pensada para un único usuario local y sin autenticación; no la expongas en una red compartida sin añadir inicio de sesión (las tareas, conversaciones y la actividad son visibles para quien alcance la API).
 
 ## Limitaciones conocidas
@@ -247,4 +259,3 @@ Cubren: carga/validación de Markdown, registro de agentes, validación de decis
 - Los planes gratuitos tienen límites de uso y pueden cambiar; la app escala a Claude cuando se agotan.
 - Sin streaming token a token: el chat recibe la respuesta consolidada al terminar.
 - Un único usuario/sesión local; sin autenticación (pensado para `localhost`).
-- Personajes y muebles 3D son figuras procedurales propias (low-poly), no modelos de terceros.

@@ -1,0 +1,38 @@
+@* Sección «Chatbots»: los bots con playbook maestro (carpeta «playbooks bots»). Cada uno se ejecuta con el agente LectorUML en su entorno de pruebas. *@
+@page "/chatbots"
+@page "/chatbots/{Id}"
+@inject OfficeApiClient Api
+
+<PageTitle>Chatbots · Agent Office</PageTitle>
+
+@if (string.IsNullOrEmpty(Id))
+{
+    <SectionPicker Icon="🧩" Title="Chatbots"
+                   Description="Bots descritos en playbooks maestros. El agente LectorUML ejecuta su flujo UML en el entorno de pruebas, con sus botones, textos y webhooks tal como los define el bot."
+                   BaseHref="/chatbots" Items="Items" CtaText="Abrir entorno de pruebas →" EmptyText="@(_loaded ? "No hay bots: genera los playbooks con --bot-generar." : "Cargando…")" />
+}
+else
+{
+    <TargetGate Id="@Id" Kind="bot" BackHref="/chatbots">
+        <CamilaSpace />
+    </TargetGate>
+}
+
+@code {
+    [Parameter] public string? Id { get; set; }
+
+    private List<WorkspaceDto> Items = new();
+    private bool _loaded;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!string.IsNullOrEmpty(Id)) return;
+        try
+        {
+            Items = (await Api.GetBotsAsync())
+                .Select(b => new WorkspaceDto(b.Id, b.Name, b.Icon, $"{b.Description} · {b.Flows} flujos, {b.Pages} páginas · Ejecuta: {b.Executor}", Array.Empty<WorkspaceAgentDto>(), "bot")).ToList();
+        }
+        catch (Exception) { Items = new(); }
+        _loaded = true;
+    }
+}

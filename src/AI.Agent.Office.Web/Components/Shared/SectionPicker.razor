@@ -1,0 +1,60 @@
+@* Lista de espacios de una sección (oficinas, chatbots o agentes): una tarjeta por elemento. Si solo hay uno, lo abre directamente. *@
+@inject NavigationManager Nav
+
+<main class="section-page">
+    <header class="section-head">
+        <h1>@Icon @Title</h1>
+        <p class="muted">@Description</p>
+    </header>
+
+    @if (Items.Count == 0)
+    {
+        <p class="muted">@EmptyText</p>
+    }
+    else
+    {
+        <div class="workspace-cards">
+            @foreach (var w in Items)
+            {
+                <a class="workspace-card" href="@($"{BaseHref}/{w.Id}")">
+                    <span class="workspace-icon">@w.Icon</span>
+                    <b>@w.Name</b>
+                    <span class="muted">@w.Description</span>
+                    @if (!string.IsNullOrEmpty(CtaText))
+                    {
+                        <span class="workspace-cta">@CtaText</span>
+                    }
+                    @if (w.Agents.Count > 0 && !string.IsNullOrEmpty(AgentsLabel))
+                    {
+                        <span class="workspace-agents">
+                            @foreach (var a in w.Agents)
+                            {
+                                <span class="workspace-agent" title="@a.Role">@a.Icon @a.Name</span>
+                            }
+                        </span>
+                    }
+                </a>
+            }
+        </div>
+    }
+</main>
+
+@code {
+    [Parameter, EditorRequired] public string Title { get; set; } = string.Empty;
+    [Parameter] public string Icon { get; set; } = string.Empty;
+    [Parameter] public string Description { get; set; } = string.Empty;
+    [Parameter] public string EmptyText { get; set; } = "Todavía no hay nada en esta sección.";
+    [Parameter, EditorRequired] public string BaseHref { get; set; } = string.Empty;
+    [Parameter] public IReadOnlyList<WorkspaceDto> Items { get; set; } = Array.Empty<WorkspaceDto>();
+    /// <summary>Si no está vacío se muestran los agentes de cada oficina.</summary>
+    [Parameter] public string AgentsLabel { get; set; } = string.Empty;
+    /// <summary>Texto de acción de la tarjeta (por ejemplo «Abrir entorno de pruebas →»).</summary>
+    [Parameter] public string CtaText { get; set; } = string.Empty;
+    /// <summary>Abrir directamente cuando solo hay un elemento (spec 010, RF-010).</summary>
+    [Parameter] public bool OpenSingle { get; set; }
+
+    protected override void OnParametersSet()
+    {
+        if (OpenSingle && Items.Count == 1) Nav.NavigateTo($"{BaseHref}/{Items[0].Id}", replace: true);
+    }
+}

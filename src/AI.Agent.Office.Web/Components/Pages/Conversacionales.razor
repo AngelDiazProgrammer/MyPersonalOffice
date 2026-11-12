@@ -1,0 +1,39 @@
+@* Sección «Agentes conversacionales»: agentes con modelo que conversan libremente con una base de conocimiento (hoy, CamilaIA). *@
+@page "/conversacionales"
+@page "/conversacionales/{Id}"
+@inject OfficeApiClient Api
+
+<PageTitle>Agentes conversacionales · Agent Office</PageTitle>
+
+@if (string.IsNullOrEmpty(Id))
+{
+    <SectionPicker Icon="💬" Title="Agentes conversacionales"
+                   Description="Agentes que conversan libremente apoyándose en una base de conocimiento y, cuando lo pides, consultan o escriben datos en los sistemas. Los creas y editas en la sección Agentes."
+                   BaseHref="/conversacionales" Items="Items" CtaText="Abrir entorno de pruebas →" EmptyText="@(_loaded ? "No hay agentes conversacionales: créalos en la sección Agentes." : "Cargando…")" />
+}
+else
+{
+    <TargetGate Id="@Id" Kind="agent" BackHref="/conversacionales">
+        <CamilaSpace />
+    </TargetGate>
+}
+
+@code {
+    [Parameter] public string? Id { get; set; }
+
+    private List<WorkspaceDto> Items = new();
+    private bool _loaded;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!string.IsNullOrEmpty(Id)) return;
+        try
+        {
+            Items = (await Api.GetAgentCatalogAsync())
+                .Where(a => a.Environment == "conversational" && a.Kind == "llm")
+                .Select(a => new WorkspaceDto(a.Id, a.Name, a.Icon, a.Purpose, Array.Empty<WorkspaceAgentDto>(), "agent")).ToList();
+        }
+        catch (Exception) { Items = new(); }
+        _loaded = true;
+    }
+}

@@ -1,3 +1,4 @@
+using AI.Agent.Office.Application.Agents;
 using AI.Agent.Office.Application.DTOs;
 using AI.Agent.Office.Application.Interfaces;
 using Microsoft.AspNetCore.Mvc;
@@ -48,12 +49,50 @@ public sealed class AgentsController : ControllerBase
 {
     private readonly IOfficeQueryService _query;
     private readonly IAgentCatalogService _catalog;
+    private readonly IAgentAdminService _admin;
 
-    public AgentsController(IOfficeQueryService query, IAgentCatalogService catalog)
+    public AgentsController(IOfficeQueryService query, IAgentCatalogService catalog, IAgentAdminService admin)
     {
         _query = query;
         _catalog = catalog;
+        _admin = admin;
     }
+
+    #region Gestión de agentes (spec 011)
+
+    /// <summary>Catálogo de todos los agentes: uso, tipo, entorno, herramientas, estado, consumo y dónde se usan.</summary>
+    [HttpGet("catalog")]
+    public ActionResult<IReadOnlyList<AgentCatalogItemDto>> Catalog() => Ok(_admin.GetCatalog());
+
+    /// <summary>Un agente tal como se edita (con sus instrucciones).</summary>
+    [HttpGet("{agentId}/definition")]
+    public ActionResult<AgentUpsertDto> Definition(string agentId) => _admin.GetForEdit(agentId) is { } a ? Ok(a) : NotFound();
+
+    /// <summary>Crea un agente (escribe su archivo Markdown y recarga el registro).</summary>
+    [HttpPost]
+    public async Task<ActionResult<AgentSaveResultDto>> Create([FromBody] AgentUpsertDto agent, CancellationToken cancellationToken)
+    {
+        var result = await _admin.CreateAsync(agent, cancellationToken);
+        return result.Ok ? Ok(result) : BadRequest(result);
+    }
+
+    /// <summary>Edita un agente (el id no cambia).</summary>
+    [HttpPut("{agentId}")]
+    public async Task<ActionResult<AgentSaveResultDto>> Update(string agentId, [FromBody] AgentUpsertDto agent, CancellationToken cancellationToken)
+    {
+        var result = await _admin.UpdateAsync(agentId, agent, cancellationToken);
+        return result.Ok ? Ok(result) : BadRequest(result);
+    }
+
+    /// <summary>Elimina un agente que no sea del sistema ni esté en una oficina.</summary>
+    [HttpDelete("{agentId}")]
+    public async Task<ActionResult<AgentSaveResultDto>> Delete(string agentId, CancellationToken cancellationToken)
+    {
+        var result = await _admin.DeleteAsync(agentId, cancellationToken);
+        return result.Ok ? Ok(result) : BadRequest(result);
+    }
+
+    #endregion
 
     /// <summary>Lista los agentes de la oficina activa.</summary>
     [HttpGet]
@@ -324,3 +363,117 @@ public sealed class DocumentsController : ControllerBase
 #endregion
 
 }
+
+#region Conectividad a navegadores (spec 007)
+
+/// <summary>Sitios, playbooks, inicio de sesión manual y ejecuciones de la conectividad a navegadores.</summary>
+[ApiController]
+[Route("api/browser")]
+public sealed class BrowserController : ControllerBase
+{
+    private readonly AI.Agent.Office.Application.Browser.BrowserManager _manager;
+    private readonly AI.Agent.Office.Application.Browser.BrowserWorkflow _workflow;
+
+    public BrowserController(AI.Agent.Office.Application.Browser.BrowserManager manager, AI.Agent.Office.Application.Browser.BrowserWorkflow workflow)
+    {
+        _manager = manager;
+        _workflow = workflow;
+    }
+
+    private static AI.Agent.Office.Application.Browser.BrowserSite ToSite(string id, BrowserSiteRequestDto r) =>
+        new(id, r.Name ?? string.Empty, r.Url ?? string.Empty, r.AllowedDomains ?? Array.Empty<string>(), r.Headless, r.Enabled);
+
+    /// <summary>Credenciales opcionales del sitio: se guardan solo en memoria del proceso.</summary>
+    private static AI.Agent.Office.Application.Browser.BrowserCredentials? ToCredentials(BrowserSiteRequestDto r) =>
+        string.IsNullOrEmpty(r.Username) && string.IsNullOrEmpty(r.Password) ? null : new AI.Agent.Office.Application.Browser.BrowserCredentials(r.Username, r.Password);
+
+    #region Sitios
+
+    [HttpGet("sites")]
+    public async Task<ActionResult<IReadOnlyList<BrowserSiteDto>>> Sites(CancellationToken ct) => Ok(await _manager.ListAsync(ct));
+
+    /// <summary>Agrega un sitio (con un playbook de plantilla). Si el identificador ya existe, se rechaza.</summary>
+    [HttpPost("sites")]
+    public async Task<ActionResult<BrowserSiteDto>> Create([FromBody] BrowserSiteRequestDto request, CancellationToken ct)
+    {
+        if (_manager.SiteExists(request.Id))
+            throw new OfficeValidationException(new[] { "Ya existe un sitio con ese identificador." });
+        return Ok(await _manager.SaveSiteAsync(ToSite(request.Id, request), ct, ToCredentials(request)));
+    }
+
+    [HttpPut("sites/{id}")]
+    public async Task<ActionResult<BrowserSiteDto>> Update(string id, [FromBody] BrowserSiteRequestDto request, CancellationToken ct) =>
+        Ok(await _manager.SaveSiteAsync(ToSite(id, request), ct, ToCredentials(request)));
+
+    /// <summary>Olvida las credenciales en memoria del sitio.</summary>
+    [HttpDelete("sites/{id}/credentials")]
+    public IActionResult ClearCredentials(string id)
+    {
+        _manager.ClearCredentials(id);
+        return NoContent();
+    }
+
+    [HttpDelete("sites/{id}")]
+    public async Task<IActionResult> Delete(string id, CancellationToken ct) =>
+        await _manager.DeleteSiteAsync(id, ct) ? NoContent() : NotFound();
+
+    #endregion
+
+    #region Playbooks
+
+    [HttpGet("sites/{id}/playbook")]
+    public async Task<ActionResult<PlaybookDto>> GetPlaybook(string id, CancellationToken ct) =>
+        await _manager.GetPlaybookAsync(id, ct) is { } playbook ? Ok(playbook) : NotFound();
+
+    [HttpPut("sites/{id}/playbook")]
+    public async Task<ActionResult<PlaybookDto>> SavePlaybook(string id, [FromBody] PlaybookTextRequestDto request, CancellationToken ct) =>
+        Ok(await _manager.SavePlaybookAsync(id, request.Markdown ?? string.Empty, ct));
+
+    [HttpPut("sites/{id}/playbook/proposal")]
+    public async Task<ActionResult<PlaybookDto>> SaveProposal(string id, [FromBody] PlaybookTextRequestDto request, CancellationToken ct) =>
+        Ok(await _manager.SaveProposalAsync(id, request.Markdown ?? string.Empty, ct));
+
+    [HttpPost("sites/{id}/playbook/proposal/approve")]
+    public async Task<ActionResult<PlaybookDto>> ApproveProposal(string id, CancellationToken ct) =>
+        Ok(await _manager.ApproveProposalAsync(id, ct));
+
+    [HttpDelete("sites/{id}/playbook/proposal")]
+    public async Task<IActionResult> RejectProposal(string id, CancellationToken ct)
+    {
+        await _manager.RejectProposalAsync(id, ct);
+        return NoContent();
+    }
+
+    #endregion
+
+    #region Sesión y ejecución
+
+    /// <summary>Abre el navegador visible para iniciar sesión a mano; responde cuando la persona cierra la ventana (o vence el tiempo).</summary>
+    [HttpPost("sites/{id}/login")]
+    public async Task<IActionResult> Login(string id, CancellationToken ct)
+    {
+        await _manager.LoginAsync(id, ct);
+        return Accepted();
+    }
+
+    /// <summary>Ejecución directa: la persona da los valores y las credenciales opcionales (no se guardan).</summary>
+    [HttpPost("sites/{id}/runs")]
+    [Microsoft.AspNetCore.RateLimiting.EnableRateLimiting(Extensions.OfficeApiExtensions.ChatRateLimitPolicy)]
+    public async Task<ActionResult<BrowserRunResultDto>> Run(string id, [FromBody] BrowserRunRequestDto request, CancellationToken ct) =>
+        Ok(await _manager.RunAsync(id, request.Values,
+            request.Credentials is { } c ? new AI.Agent.Office.Application.Browser.BrowserCredentials(c.Username, c.Password) : null, ct));
+
+    /// <summary>Aprueba el borrador pendiente de una conversación (tarjeta del chat) con credenciales opcionales.</summary>
+    [HttpPost("pending/{conversationId:guid}/approve")]
+    [Microsoft.AspNetCore.RateLimiting.EnableRateLimiting(Extensions.OfficeApiExtensions.ChatRateLimitPolicy)]
+    public async Task<ActionResult<BrowserApproveResponseDto>> Approve(Guid conversationId, [FromBody] BrowserCredentialsDto? credentials, CancellationToken ct) =>
+        Ok(await _workflow.ApproveAsync(conversationId,
+            credentials is null ? null : new AI.Agent.Office.Application.Browser.BrowserCredentials(credentials.Username, credentials.Password), ct));
+
+    [HttpPost("pending/{conversationId:guid}/cancel")]
+    public IActionResult Cancel(Guid conversationId) => _workflow.Cancel(conversationId) ? Accepted() : NotFound();
+
+    #endregion
+}
+
+#endregion

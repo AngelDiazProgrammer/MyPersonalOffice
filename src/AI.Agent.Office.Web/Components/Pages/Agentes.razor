@@ -1,0 +1,231 @@
+@* Sección «Agentes» (spec 011): catálogo de todos los agentes de la plataforma, cada uno con su uso específico, y gestión (crear, editar, eliminar). *@
+@page "/agentes"
+@using AI.Agent.Office.Application.Agents
+@inject OfficeApiClient Api
+
+<PageTitle>Agentes · Agent Office</PageTitle>
+
+<main class="section-page">
+    <header class="section-head agents-head">
+        <div>
+            <h1>🤖 Agentes</h1>
+            <p class="muted">Cada agente existe para algo concreto. Aquí ves para qué sirve cada uno, quién lo ejecuta y dónde se usa; y puedes crear, editar o eliminar agentes.</p>
+        </div>
+        <button type="button" class="choice-btn choice-rec" @onclick="StartCreate">➕ Nuevo agente</button>
+    </header>
+
+    @if (_message is not null) { <div class="banner banner-info">@_message</div> }
+    @if (_errors.Count > 0)
+    {
+        <div class="banner banner-error">
+            @foreach (var e in _errors) { <div>• @e</div> }
+        </div>
+    }
+
+    @if (_editing is not null)
+    {
+        <section class="conn-card agent-editor" aria-label="Editor de agente">
+            <h2>@(_creating ? "Nuevo agente" : $"Editar «{_editing.Id}»")</h2>
+            <div class="conn-form">
+                <label>Id <input @bind="_editing.Id" disabled="@(!_creating)" placeholder="mi-agente" /></label>
+                <label>Nombre <input @bind="_editing.Name" /></label>
+                <label>Rol <input @bind="_editing.Role" placeholder="Qué papel cumple" /></label>
+                <label>Icono <input @bind="_editing.Icon" /></label>
+                <label>Color <input type="color" @bind="_editing.Color" /></label>
+                <label>Tope de tokens <input type="number" @bind="_editing.MaxTokens" /></label>
+                <label>Tipo
+                    <select @bind="_editing.Kind" disabled="@(_isSystem)">
+                        <option value="llm">llm · lo ejecuta un modelo</option>
+                        <option value="executor">executor · lo ejecuta código (sin modelo)</option>
+                    </select>
+                </label>
+                <label>Entorno
+                    <select @bind="_editing.Environment">
+                        <option value="office">office · oficinas virtuales</option>
+                        <option value="chatbot">chatbot · ejecuta bots</option>
+                        <option value="conversational">conversational · agentes conversacionales</option>
+                    </select>
+                </label>
+                <label>Base de conocimiento (id del bot) <input @bind="_editing.Knowledge" placeholder="camila" /></label>
+                <label class="agent-check"><input type="checkbox" @bind="_editing.Sensitive" /> Maneja datos personales (solo Claude)</label>
+            </div>
+
+            <label class="agent-field">Uso específico (obligatorio, una frase)
+                <input class="agent-wide" @bind="_editing.Purpose" placeholder="Para qué sirve este agente" />
+            </label>
+
+            <fieldset class="agent-tools">
+                <legend>Herramientas que puede usar</legend>
+                @foreach (var tool in AgentTools.All)
+                {
+                    <label class="agent-check"><input type="checkbox" checked="@_editing.Tools.Contains(tool)" @onchange="e => ToggleTool(tool, e.Value is true)" /> @tool</label>
+                }
+            </fieldset>
+
+            <label class="agent-field">Instrucciones (Markdown)
+                <textarea class="agent-text" rows="16" @bind="_editing.Instructions"></textarea>
+            </label>
+
+            <div class="conn-row">
+                <button type="button" class="choice-btn choice-rec" disabled="@_busy" @onclick="SaveAsync">💾 Guardar</button>
+                <button type="button" class="link-btn" @onclick="Cancel">Cancelar</button>
+            </div>
+        </section>
+    }
+
+    @if (_agents is null)
+    {
+        <p class="muted">Cargando…</p>
+    }
+    else
+    {
+        <div class="agent-grid">
+            @foreach (var a in _agents)
+            {
+                <article class="agent-tile" style="--agent:@a.Color">
+                    <header>
+                        <span class="agent-icon">@a.Icon</span>
+                        <div>
+                            <h3>@a.Name @if (a.IsSystem) { <span class="conn-tag" title="Agente del sistema: se edita pero no se elimina">sistema</span> }</h3>
+                            <span class="muted">@a.Role</span>
+                        </div>
+                    </header>
+                    <p class="agent-purpose"><b>Uso:</b> @a.Purpose</p>
+                    <div class="agent-tags">
+                        <span class="conn-tag">@(a.Kind == "executor" ? "⚙️ ejecutor (sin modelo)" : "🧠 modelo")</span>
+                        <span class="conn-tag">@a.Environment</span>
+                        @if (a.Sensitive) { <span class="conn-tag" title="Solo Claude">🔒 datos personales</span> }
+                        @foreach (var t in a.Tools) { <span class="conn-tag">🔧 @t</span> }
+                    </div>
+                    @if (a.UsedBy.Count > 0)
+                    {
+                        <div class="muted">Se usa en: @string.Join(" · ", a.UsedBy)</div>
+                    }
+                    <div class="muted">@StatusLabel(a) · @a.Requests llamada(s) · @(a.InputTokens + a.OutputTokens) tokens</div>
+                    <footer class="conn-row">
+                        <button type="button" class="link-btn" @onclick="() => StartEdit(a.Id)">✏️ Editar</button>
+                        @if (!a.IsSystem && !a.IsOrchestrator)
+                        {
+                            @if (_confirmDelete == a.Id)
+                            {
+                                <button type="button" class="link-btn conn-bad" @onclick="() => DeleteAsync(a.Id)">Confirmar: eliminar</button>
+                                <button type="button" class="link-btn" @onclick="() => _confirmDelete = null">No</button>
+                            }
+                            else
+                            {
+                                <button type="button" class="link-btn" @onclick="() => _confirmDelete = a.Id">🗑 Eliminar</button>
+                            }
+                        }
+                    </footer>
+                </article>
+            }
+        </div>
+    }
+</main>
+
+@code {
+    private IReadOnlyList<AgentCatalogItemDto>? _agents;
+    private AgentForm? _editing;
+    private bool _creating;
+    private bool _isSystem;
+    private bool _busy;
+    private string? _message;
+    private string? _confirmDelete;
+    private List<string> _errors = new();
+
+    /// <summary>Copia editable de un agente (el DTO es inmutable).</summary>
+    private sealed class AgentForm
+    {
+        public string Id { get; set; } = string.Empty;
+        public string Name { get; set; } = string.Empty;
+        public string Role { get; set; } = string.Empty;
+        public string Purpose { get; set; } = string.Empty;
+        public string Description { get; set; } = string.Empty;
+        public string Kind { get; set; } = "llm";
+        public string Environment { get; set; } = "office";
+        public List<string> Tools { get; set; } = new();
+        public string Knowledge { get; set; } = string.Empty;
+        public bool Sensitive { get; set; }
+        public string Color { get; set; } = "#8b5cf6";
+        public string Icon { get; set; } = "🤖";
+        public int? MaxTokens { get; set; } = 2048;
+        public string Instructions { get; set; } = string.Empty;
+
+        public AgentUpsertDto ToDto() => new(Id, Name, Role, Purpose, Description, Kind, Environment, Tools, Knowledge, Sensitive, Color, Icon, MaxTokens, Instructions);
+
+        public static AgentForm From(AgentUpsertDto d) => new()
+        {
+            Id = d.Id, Name = d.Name, Role = d.Role, Purpose = d.Purpose, Description = d.Description, Kind = d.Kind, Environment = d.Environment,
+            Tools = d.Tools?.ToList() ?? new List<string>(), Knowledge = d.Knowledge, Sensitive = d.Sensitive, Color = d.Color, Icon = d.Icon,
+            MaxTokens = d.MaxTokens, Instructions = d.Instructions
+        };
+    }
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        try { _agents = await Api.GetAgentCatalogAsync(); }
+        catch (Exception ex) { _errors = new List<string> { "No se pudo leer el catálogo de agentes: " + ex.Message }; _agents = Array.Empty<AgentCatalogItemDto>(); }
+    }
+
+    private void StartCreate()
+    {
+        _message = null; _errors = new();
+        _creating = true; _isSystem = false;
+        _editing = new AgentForm { Instructions = "# Rol: <nombre>\n\nDescribe aquí cómo debe comportarse este agente.\n" };
+    }
+
+    private async Task StartEdit(string id)
+    {
+        _message = null; _errors = new();
+        var def = await Api.GetAgentDefinitionAsync(id);
+        if (def is null) { _errors = new List<string> { $"No se encontró el agente «{id}»." }; return; }
+        _creating = false;
+        _isSystem = _agents?.FirstOrDefault(a => a.Id == id)?.IsSystem == true;
+        _editing = AgentForm.From(def);
+    }
+
+    private void Cancel() { _editing = null; _errors = new(); }
+
+    private void ToggleTool(string tool, bool on)
+    {
+        if (_editing is null) return;
+        if (on && !_editing.Tools.Contains(tool)) _editing.Tools.Add(tool);
+        if (!on) _editing.Tools.Remove(tool);
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_editing is null) return;
+        _busy = true; _errors = new(); _message = null;
+        try
+        {
+            var dto = _editing.ToDto();
+            var result = _creating ? await Api.CreateAgentAsync(dto) : await Api.UpdateAgentAsync(dto.Id, dto);
+            if (result.Ok)
+            {
+                _message = _creating ? $"Agente «{dto.Name}» creado." : $"Agente «{dto.Name}» guardado.";
+                _editing = null;
+                await LoadAsync();
+            }
+            else _errors = result.Errors.ToList();
+        }
+        catch (Exception ex) { _errors = new List<string> { ex.Message }; }
+        finally { _busy = false; }
+    }
+
+    private async Task DeleteAsync(string id)
+    {
+        _confirmDelete = null; _errors = new(); _message = null;
+        var result = await Api.DeleteAgentAsync(id);
+        if (result.Ok) { _message = "Agente eliminado."; await LoadAsync(); }
+        else _errors = result.Errors.ToList();
+    }
+
+    private static string StatusLabel(AgentCatalogItemDto a) => a.Status switch
+    {
+        AI.Agent.Office.Domain.Enums.AgentStatus.Idle => "En reposo",
+        var s => s.ToString()
+    };
+}

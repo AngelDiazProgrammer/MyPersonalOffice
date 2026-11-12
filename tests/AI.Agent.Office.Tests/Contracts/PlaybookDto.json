@@ -1,0 +1,15 @@
+{
+  "siteId": "mail",
+  "markdown": "# md",
+  "errors": [
+    "error"
+  ],
+  "inputs": [
+    {
+      "name": "asunto",
+      "question": "redactar",
+      "draft": true
+    }
+  ],
+  "proposal": "# propuesta"
+}

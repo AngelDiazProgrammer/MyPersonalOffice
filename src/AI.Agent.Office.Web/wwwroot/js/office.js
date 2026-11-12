@@ -1,14 +1,4 @@
-// La escena 3D es un módulo ES que carga de forma asíncrona; Blazor espera a que esté lista antes de iniciar.
-window.officeSceneReady = new Promise(function (resolve) { window.__officeSceneResolve = resolve; });
-
 window.officeUi = {
-    // Espera a que cargue la escena 3D (máximo 10 segundos).
-    sceneReady: function () {
-        return Promise.race([
-            window.officeSceneReady,
-            new Promise(function (_, reject) { setTimeout(function () { reject(new Error('3D scene failed to load')); }, 10000); })
-        ]);
-    },
     // Baja el chat hasta el último mensaje.
     scrollToBottom: function (element) {
         if (!element) return;

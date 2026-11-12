@@ -1,0 +1,59 @@
+@* Abre el entorno de pruebas de un bot o de un agente conversacional (spec 012): busca su información y lo deja como destino del chat. *@
+@inherits OfficeComponentBase
+@inject OfficeApiClient Api
+
+@if (_loading)
+{
+    <main class="section-page"><p class="muted">Abriendo…</p></main>
+}
+else if (_target is null)
+{
+    <main class="section-page">
+        <h1>No encontrado</h1>
+        <p class="muted">«@Id» no existe en esta sección.</p>
+        <a class="link-btn" href="@BackHref">← Volver</a>
+    </main>
+}
+else if (Office.Target?.Wire == _target.Wire)
+{
+    @ChildContent
+}
+
+@code {
+    [Parameter, EditorRequired] public string Id { get; set; } = string.Empty;
+    /// <summary>«bot» (LectorUML ejecuta su flujo) o «agent» (agente conversacional).</summary>
+    [Parameter, EditorRequired] public string Kind { get; set; } = "bot";
+    [Parameter] public string BackHref { get; set; } = "/chatbots";
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    private EnvironmentTarget? _target;
+    private bool _loading = true;
+    private string? _loadedFor;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var key = Kind + ":" + Id;
+        if (_loadedFor == key && _target is not null && Office.Target?.Wire == _target.Wire) return;
+        _loading = true;
+        _loadedFor = key;
+        _target = await FindAsync();
+        _loading = false;
+        if (_target is not null && Office.Target?.Wire != _target.Wire) Office.OpenTarget(_target);
+    }
+
+    private async Task<EnvironmentTarget?> FindAsync()
+    {
+        try
+        {
+            if (Kind == "bot")
+            {
+                var bot = (await Api.GetBotsAsync()).FirstOrDefault(b => string.Equals(b.Id, Id, StringComparison.OrdinalIgnoreCase));
+                return bot is null ? null : new EnvironmentTarget("bot", bot.Id, bot.Name, bot.Icon, bot.Description, bot.Executor);
+            }
+
+            var agent = (await Api.GetAgentCatalogAsync()).FirstOrDefault(a => string.Equals(a.Id, Id, StringComparison.OrdinalIgnoreCase) && a.Environment == "conversational");
+            return agent is null ? null : new EnvironmentTarget("agent", agent.Id, agent.Name, agent.Icon, agent.Purpose, agent.Id);
+        }
+        catch (Exception) { return null; }
+    }
+}

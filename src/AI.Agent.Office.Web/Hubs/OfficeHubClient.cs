@@ -26,10 +26,10 @@ public sealed class OfficeHubClient : IAsyncDisposable
     public event Func<Task>? Reconnected;
 
     /// <summary>Crea la conexión con reconexión automática y la suscripción a todos los eventos.</summary>
-    public OfficeHubClient(string hubUrl)
+    public OfficeHubClient(string hubUrl, string? internalToken = null)
     {
         _connection = new HubConnectionBuilder()
-            .WithUrl(hubUrl)
+            .WithUrl(hubUrl, o => { if (!string.IsNullOrEmpty(internalToken)) o.Headers["X-Office-Internal"] = internalToken; })
             .WithAutomaticReconnect()
             .AddJsonProtocol(o => o.PayloadSerializerOptions.Converters.Add(
                 new System.Text.Json.Serialization.JsonStringEnumConverter()))

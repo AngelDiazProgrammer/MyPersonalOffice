@@ -4,7 +4,7 @@
 
 <div class="msg msg-@(Item.Role == ChatRole.User ? "user" : "assistant") @(Item.IsError ? "msg-error" : string.Empty)">
     <div class="msg-meta">
-        <span>@(Item.Role == ChatRole.User ? "Tú" : "Orquestador")</span>
+        <span>@(Item.Role == ChatRole.User ? "Tú" : Office.Target?.Name ?? "Orquestador")</span>
         <span>@Item.Time.ToString("HH:mm")</span>
     </div>
     @if (Item.Role == ChatRole.Assistant && Item.TaskCount > 0)
@@ -31,12 +31,31 @@
                         </button>
                     }
                 </div>
-                <div class="choice-custom">
-                    <textarea rows="2" placeholder="¿Tienes otra solución? Escríbela aquí y la reviso contra la base…" @bind="_custom" @bind:event="oninput"></textarea>
-                    <div class="choice-actions">
-                        <button type="button" class="link-btn" disabled="@(_custom.Trim().Length < 20)" @onclick="SendCustomAsync">✍️ Usar mi solución</button>
-                        <button type="button" class="link-btn" @onclick="CancelCaseAsync">✖ Cancelar caso</button>
+                @if (!choice.MenuOnly)
+                {
+                    <div class="choice-custom">
+                        <textarea rows="2" placeholder="¿Tienes otra solución? Escríbela aquí y la reviso contra la base…" @bind="_custom" @bind:event="oninput"></textarea>
+                        <div class="choice-actions">
+                            <button type="button" class="link-btn" disabled="@(_custom.Trim().Length < 20)" @onclick="SendCustomAsync">✍️ Usar mi solución</button>
+                            <button type="button" class="link-btn" @onclick="CancelCaseAsync">✖ Cancelar caso</button>
+                        </div>
                     </div>
+                }
+            </div>
+        }
+
+        @if (Item.Approval is { } approval && IsLatest && !Office.IsSending)
+        {
+            <div class="choice-box approval-card">
+                <div class="approval-head">🌐 @approval.Title · @approval.SiteName@(approval.Irreversible ? " · ⚠️ irreversible" : string.Empty)</div>
+                <div class="approval-creds">
+                    <span class="muted">Solo si el sitio te pide iniciar sesión (no se guardan):</span>
+                    <input type="text" autocomplete="off" placeholder="Usuario (opcional)" @bind="_user" @bind:event="oninput" />
+                    <input type="password" autocomplete="new-password" placeholder="Clave (opcional)" @bind="_pass" @bind:event="oninput" />
+                </div>
+                <div class="choice-actions">
+                    <button type="button" class="choice-btn choice-rec" @onclick="ApproveBrowserAsync">✅ Aprobar y ejecutar</button>
+                    <button type="button" class="link-btn" @onclick="CancelBrowserAsync">✖ Cancelar</button>
                 </div>
             </div>
         }
@@ -50,7 +69,7 @@
                 }
             </div>
         }
-        else if (!Item.IsError && Item.Content.Length > 80)
+        else if (!Item.IsError && Item.Content.Length > 80 && !IsBrowserMessage)
         {
             <button type="button" class="link-btn export-btn" disabled="@_exporting" @onclick="() => ExportAsync(false)">
                 @(_exporting ? "Generando…" : "📄 Exportar a Word")
@@ -67,7 +86,24 @@
 </div>
 
 @code {
+    /// <summary>Preguntas, borradores y resultados del navegador no se exportan a Word/PDF.</summary>
+    private bool IsBrowserMessage => Item.Approval is not null || IsCamila || Item.Choice?.MenuOnly == true || Item.Content.Contains("🧩 Ficha ·", StringComparison.Ordinal) || Item.Content.StartsWith("🌐 ", StringComparison.Ordinal) || Item.Content.StartsWith("📝 **Borrador", StringComparison.Ordinal)
+        || Item.Content.StartsWith("✅ **", StringComparison.Ordinal) || Item.Content.StartsWith("❌ No pude completar", StringComparison.Ordinal);
+
+    private bool IsCamila => Office.Target is not null;
+
     private string _custom = string.Empty;
+    private string _user = string.Empty;
+    private string _pass = string.Empty;
+
+    private async Task ApproveBrowserAsync()
+    {
+        var (user, pass) = (_user, _pass);
+        _user = _pass = string.Empty;           // las credenciales no se conservan en la interfaz
+        await Office.ApproveBrowserAsync(user, pass);
+    }
+
+    private Task CancelBrowserAsync() => Office.CancelBrowserAsync();
 
     /// <summary>Las opciones solo se ofrecen en el último mensaje de la conversación.</summary>
     private bool IsLatest => Office.Messages.Count > 0 && ReferenceEquals(Office.Messages[^1], Item);

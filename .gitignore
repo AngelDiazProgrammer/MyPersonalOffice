@@ -432,3 +432,11 @@ FodyWeavers.xsd
 
 # Documentos Word generados
 generated-documents/
+
+# Conectividad a navegadores: sitios y perfiles (sesiones) del navegador
+browser-data/
+# Propuestas de playbook aprendidas (se revisan y se aprueban antes de versionarlas)
+playbooks/*.propuesta.md
+
+# Export de Dialogflow CX del bot Camila: contiene credenciales de webhooks. NUNCA versionar.
+Bots/

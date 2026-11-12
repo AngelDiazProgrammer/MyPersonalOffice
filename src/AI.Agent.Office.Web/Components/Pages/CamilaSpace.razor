@@ -1,0 +1,40 @@
+@* Entorno de pruebas de un bot (lo ejecuta LectorUML) o de un agente conversacional (spec 012): guía de uso, registro en vivo y chat. No usa la oficina 2D. *@
+@inherits OfficeComponentBase
+
+@if (Office.Target is { } target)
+{
+    <main class="split">
+        <section class="panel office-panel">
+            <header class="office-head">
+                <div>
+                    <h1>@target.Icon @target.Name</h1>
+                    <span class="muted">@(target.IsBot ? "Chatbot · lo ejecuta el agente LectorUML a partir de su playbook" : "Agente conversacional · conversa libremente con la base de conocimiento")</span>
+                    <button type="button" class="link-btn" title="Empieza una conversación nueva (se descartan los datos de la actual)" @onclick="() => Office.OpenTarget(target)">🧹 Nueva conversación</button>
+                    <a class="link-btn" href="/agentes" title="Ver y editar los agentes">🤖 Agentes</a>
+                </div>
+                <div class="head-stats">
+                    <span class="stat" title="Los webhooks se ejecutan contra los servicios reales; los de escritura piden confirmación"><b>Real</b> webhooks</span>
+                    <span class="stat" title="Agente que lo ejecuta"><b>@(target.IsBot ? target.Executor : target.Id)</b></span>
+                    <span class="stat" title="Quién responde"><b>@(target.IsBot ? "sin modelo" : "Claude")</b></span>
+                </div>
+            </header>
+
+            <div class="camila-guide">
+                @if (target.IsBot)
+                {
+                    <p><b>Cómo se usa.</b> Escribe «hola» para iniciar. Pulsa los botones o escribe como lo haría una persona. En cada respuesta ves la <b>ficha de la página</b> (textos originales, botones, formulario, webhooks y rutas).</p>
+                    <p class="muted">Comandos: <code>/jerarquia</code> · <code>/ir &lt;flujo&gt; › &lt;página&gt;</code> · <code>/ficha</code> · <code>/vars</code> · <code>/reiniciar</code></p>
+                }
+                else
+                {
+                    <p><b>Cómo se usa.</b> Conversa con libertad: pregunta lo que quieras sobre lo que cubre la base o pídele que consulte tus datos. <b>No sigue un guion ni un menú</b>: se apoya en la base como conocimiento y decide qué buscar o qué servicio llamar.</p>
+                    <p class="muted">Si necesita tu cédula te la pide en la conversación (vive en memoria y se descarta al terminar). Antes de escribir datos en los sistemas te pide confirmación. Sus instrucciones, herramientas y notas se editan en la sección Agentes y en <code>playbooks bots/&lt;bot&gt;/notas.md</code>.</p>
+                }
+            </div>
+
+            <LogViewer Compact="true" Sources="@(new[] { "Camila", "Webhook", "Modelo" })" Title="Registro de este entorno" />
+        </section>
+
+        <ChatPanel />
+    </main>
+}

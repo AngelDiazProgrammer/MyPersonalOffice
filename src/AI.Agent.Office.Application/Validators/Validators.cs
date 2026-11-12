@@ -25,6 +25,7 @@ public static class ChatRequestValidator
         else if (request.Message.Length > maxMessageChars) errors.Add($"El mensaje supera el máximo de {maxMessageChars} caracteres.");
 
         if (request.DocumentIds is { Count: > MaxDocuments }) errors.Add($"Se permiten como máximo {MaxDocuments} documentos por mensaje.");
+        if (!string.IsNullOrWhiteSpace(request.Target) && AI.Agent.Office.Application.Camila.CamilaTarget.Parse(request.Target) is null) errors.Add("El destino no es válido (usa bot:<id> o agent:<id>).");
         return errors;
     }
 }

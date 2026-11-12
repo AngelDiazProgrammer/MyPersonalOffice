@@ -6,7 +6,7 @@
     <header class="chat-head">
         <div class="chat-avatar" style="--agent:@(Office.Orchestrator?.Color ?? "#a78bfa")">@(Office.Orchestrator?.Icon ?? "🧠")</div>
         <div class="chat-id">
-            <h2>@(Office.Orchestrator?.Name ?? "Orquestador")</h2>
+            <h2>@(Office.Target?.Name ?? Office.Orchestrator?.Name ?? "Orquestador")</h2>
             <span class="muted">@(Office.Orchestrator is { } o ? StatusInfo.Label(o.Status) : "—")</span>
         </div>
         <span class="conn conn-@Office.Connection.ToString().ToLowerInvariant()" title="Estado de SignalR">
@@ -31,15 +31,25 @@
         @if (Office.Messages.Count == 0)
         {
             <div class="welcome">
-                <div class="welcome-icon">🏢</div>
-                <h3>Bienvenido a la oficina</h3>
-                <p>Háblame de lo que necesitas. Decidiré si lo resuelvo yo o si lo delego a mi equipo de especialistas.</p>
-                <div class="suggestions">
-                    @foreach (var suggestion in Suggestions)
-                    {
-                        <button type="button" class="chip" @onclick="() => UseSuggestion(suggestion)">@suggestion</button>
-                    }
-                </div>
+                @if (IsCamila)
+                {
+                    <div class="welcome-icon">@Office.Target?.Icon</div>
+                    <h3>@Office.Target?.Name</h3>
+                    <p>@(Office.Target?.IsBot == true ? "Escribe «hola» para iniciar la sesión del bot como la iniciaría una persona." : "Salúdala y cuéntale lo que necesitas; ella conversa contigo.")</p>
+                    <div class="suggestions"><button type="button" class="chip" @onclick='() => UseSuggestion("hola")'>hola</button></div>
+                }
+                else
+                {
+                    <div class="welcome-icon">🏢</div>
+                    <h3>Bienvenido a la oficina</h3>
+                    <p>Háblame de lo que necesitas. Decidiré si lo resuelvo yo o si lo delego a mi equipo de especialistas.</p>
+                    <div class="suggestions">
+                        @foreach (var suggestion in Suggestions)
+                        {
+                            <button type="button" class="chip" @onclick="() => UseSuggestion(suggestion)">@suggestion</button>
+                        }
+                    </div>
+                }
             </div>
         }
 
@@ -51,7 +61,7 @@
         @if (Office.IsSending)
         {
             <div class="msg msg-assistant typing-row">
-                <div class="msg-meta"><span>Orquestador</span></div>
+                <div class="msg-meta"><span>@(Office.Target?.Name ?? "Orquestador")</span></div>
                 <div class="typing"><span></span><span></span><span></span></div>
                 @if (Office.ActiveAgents.Count > 0)
                 {
@@ -95,7 +105,7 @@
             📎
             <InputFile OnChange="OnFileSelected" accept=".pdf,application/pdf" hidden />
         </label>
-        <textarea @ref="_input" class="composer-input" rows="1" placeholder="Escribe un mensaje al Orquestador…"
+        <textarea @ref="_input" class="composer-input" rows="1" placeholder="@(Office.Target is { } t ? "Escribe a " + t.Name + "…" : "Escribe un mensaje al Orquestador…")"
                   @bind="_draft" @bind:event="oninput"></textarea>
         <button type="button" class="send-btn" @ref="_sendButton" @onclick="SendAsync"
                 disabled="@(Office.IsSending || string.IsNullOrWhiteSpace(_draft))" title="Enviar (Enter)">➤</button>
@@ -104,6 +114,9 @@
 
 @code {
     private const long MaxFileBytes = 10 * 1024 * 1024;
+
+    /// <summary>El espacio abierto es una de las oficinas de Camila (chatbot o agente conversacional).</summary>
+    private bool IsCamila => Office.Target is not null;
 
     private static readonly string[] Suggestions =
     {

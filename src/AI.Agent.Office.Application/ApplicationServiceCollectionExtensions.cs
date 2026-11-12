@@ -1,4 +1,6 @@
 using AI.Agent.Office.Application.Agents;
+using AI.Agent.Office.Application.Browser;
+using AI.Agent.Office.Application.Camila;
 using AI.Agent.Office.Application.Interfaces;
 using AI.Agent.Office.Application.Options;
 using AI.Agent.Office.Application.Orchestration;
@@ -21,6 +23,7 @@ public static class ApplicationServiceCollectionExtensions
         services.Configure<KnowledgeOptions>(configuration.GetSection(KnowledgeOptions.SectionName));
         services.Configure<PricingOptions>(configuration.GetSection(PricingOptions.SectionName));
         services.Configure<DocumentOptions>(configuration.GetSection(DocumentOptions.SectionName));
+        services.Configure<BrowserOptions>(configuration.GetSection(BrowserOptions.SectionName));
 
         // Shared in-memory state (singletons, internally synchronized).
         services.AddSingleton<IAgentRegistry, AgentRegistry>();
@@ -34,7 +37,21 @@ public static class ApplicationServiceCollectionExtensions
         services.AddSingleton<IOfficeEventService, OfficeEventService>();
         services.AddSingleton<IAgentStateService, AgentStateService>();
         services.AddSingleton<IAgentCatalogService, AgentCatalogService>();
+        services.AddSingleton<IAgentAdminService, AgentAdminService>();
         services.AddSingleton<IOfficeQueryService, OfficeQueryService>();
+
+        // Conectividad a navegadores (spec 007): el ejecutor, el flujo del chat y la gestión de sitios y playbooks.
+        services.AddSingleton<IBrowserPendingStore, BrowserPendingStore>();
+        services.AddSingleton<BrowserRunner>();
+        services.AddSingleton<BrowserManager>();
+        services.AddSingleton<BrowserWorkflow>();
+
+        // Camila IA (spec 009): oficinas UML y Conversacional sobre el bot de Dialogflow. El estado vive solo en memoria.
+        services.Configure<CamilaOptions>(configuration.GetSection(CamilaOptions.SectionName));
+        services.AddSingleton<CamilaSessionStore>();
+        services.AddSingleton<ICamilaWebhookService, CamilaWebhookService>();
+        services.AddSingleton<ICamilaGeneratorRunner, CamilaGeneratorRunner>();
+        services.AddSingleton<CamilaWorkflow>();
 
         // Servicios por solicitud (dependen del cliente de Anthropic basado en HttpClient).
         services.AddScoped<IAgentRunner, AgentRunner>();

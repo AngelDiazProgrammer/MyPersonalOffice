@@ -48,7 +48,7 @@ public sealed class WorkspaceService : IWorkspaceService
         return active is not null && active.Agents.Contains(agentId, StringComparer.OrdinalIgnoreCase);
     }
 
-    /// <summary>Posición del agente en la oficina (define su puesto en la escena 3D).</summary>
+    /// <summary>Posición del agente en la oficina (define su puesto en la oficina 2D).</summary>
     public int OrderOf(string agentId)
     {
         var active = _active;

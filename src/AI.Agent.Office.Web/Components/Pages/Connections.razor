@@ -1,0 +1,297 @@
+@* Conectividad a navegadores (spec 007): sitios, inicio de sesión manual, playbooks, propuestas aprendidas y ejecución directa. *@
+@page "/conexiones"
+@inject OfficeApiClient Api
+
+<PageTitle>Conexiones · AI Agent Office</PageTitle>
+
+<main class="conn-page">
+    <header class="conn-row">
+        <h1 style="margin:0">🌐 Conexiones</h1>
+    </header>
+    <p class="muted">
+        Sitios a los que la oficina puede conectarse con Playwright. Cada sitio tiene un playbook (<code>playbooks/&lt;id&gt;.md</code>) con sus entradas y pasos.
+        Inicia sesión a mano una vez (la sesión se reutiliza); la clave del formulario de la conexión se guarda en un .md (texto plano, solo pruebas); la que escribas en «Ejecutar» solo se usa en esa ejecución.
+    </p>
+
+    @if (_error is not null) { <div class="banner banner-error">@_error</div> }
+    @if (_info is not null) { <div class="banner banner-info">@_info</div> }
+
+    <section class="conn-card">
+        <h2>Agregar sitio</h2>
+        <div class="conn-form">
+            <input placeholder="Identificador (ej. gmail)" @bind="_newId" />
+            <input placeholder="Nombre (ej. Gmail)" @bind="_newName" />
+            <input placeholder="URL (https://…)" @bind="_newUrl" />
+            <input autocomplete="off" placeholder="Usuario del sitio (opcional)" @bind="_newUser" />
+            <input type="password" autocomplete="new-password" placeholder="Clave del sitio (opcional)" @bind="_newPass" />
+            <input placeholder="Dominios permitidos (coma). Vacío = el de la URL" @bind="_newDomains" />
+            <select @bind="_newMode">
+                <option value="">Navegador: valor global</option>
+                <option value="visible">Visible</option>
+                <option value="invisible">Invisible</option>
+            </select>
+        </div>
+        <div class="muted">🔑 Usuario y clave se guardan en <code>browser-data/credentials/&lt;id&gt;.md</code> en <b>texto plano</b> (solo entorno de pruebas; la carpeta está en <code>.gitignore</code>) y siguen disponibles tras reiniciar. Úsalos en los pasos con <code>{{credencial.usuario}}</code> y <code>{{credencial.clave}}</code>.</div>
+        <div class="conn-row"><button type="button" class="choice-btn" disabled="@_busy" @onclick="AddAsync">➕ Agregar</button></div>
+    </section>
+
+    @if (_sites is null)
+    {
+        <p class="muted">Cargando…</p>
+    }
+    else if (_sites.Count == 0)
+    {
+        <p class="muted">Todavía no hay sitios. Agrega el primero arriba.</p>
+    }
+
+    @foreach (var site in _sites ?? Array.Empty<BrowserSiteDto>())
+    {
+        <section class="conn-card">
+            <div class="conn-row">
+                <h3>@site.Name</h3>
+                <span class="conn-tag">@site.Id</span>
+                <span class="conn-tag">@(site.Headless is null ? "navegador: global" : site.Headless == true ? "invisible" : "visible")</span>
+                @if (site.HasProposal) { <span class="conn-tag">🧠 propuesta pendiente</span> }
+                @if (site.HasCredentials) { <span class="conn-tag" title="Guardadas en browser-data/credentials/@(site.Id).md">🔑 credenciales@(string.IsNullOrEmpty(site.Username) ? string.Empty : ": " + site.Username)</span> }
+                @if (!site.Enabled) { <span class="conn-tag">⏸ desactivado</span> }
+            </div>
+            <div class="muted">@site.Url · dominios: @string.Join(", ", site.AllowedDomains)</div>
+            <div class="conn-row">
+                <button type="button" class="link-btn" disabled="@_busy" title="Abre el navegador visible; inicia sesión y cierra la ventana" @onclick="() => LoginAsync(site)">🔐 Iniciar sesión</button>
+                <button type="button" class="link-btn" @onclick="() => StartEdit(site)">✏️ Editar conexión</button>
+                <button type="button" class="link-btn" @onclick='() => OpenAsync(site, "playbook")'>📝 Playbook</button>
+                <button type="button" class="link-btn" @onclick='() => OpenAsync(site, "run")'>▶ Ejecutar</button>
+                @if (site.HasCredentials) { <button type="button" class="link-btn" disabled="@_busy" @onclick="() => ForgetAsync(site)">🔑 Borrar credenciales</button> }
+                @if (_confirmDelete == site.Id)
+                {
+                    <button type="button" class="link-btn conn-bad" @onclick="() => DeleteAsync(site)">Confirmar: quitar sitio, playbook y sesión</button>
+                    <button type="button" class="link-btn" @onclick="() => _confirmDelete = null">No</button>
+                }
+                else
+                {
+                    <button type="button" class="link-btn" @onclick="() => _confirmDelete = site.Id">🗑 Quitar</button>
+                }
+            </div>
+
+            @if (_editId == site.Id)
+            {
+                <div class="conn-card">
+                    <h3>Editar «@site.Id»</h3>
+                    <div class="conn-form">
+                        <input placeholder="Nombre" @bind="_eName" />
+                        <input placeholder="URL (https://…)" @bind="_eUrl" />
+                        <input placeholder="Dominios permitidos (coma)" @bind="_eDomains" />
+                        <select @bind="_eMode">
+                            <option value="">Navegador: valor global</option>
+                            <option value="visible">Visible</option>
+                            <option value="invisible">Invisible</option>
+                        </select>
+                        <label style="display:flex;align-items:center;gap:6px"><input type="checkbox" @bind="_eEnabled" /> Conexión activa</label>
+                        <input autocomplete="off" placeholder="Usuario del sitio" @bind="_eUser" />
+                        <input type="password" autocomplete="new-password" placeholder="@(site.HasCredentials ? "Clave (vacío = conservar la actual)" : "Clave del sitio")" @bind="_ePass" />
+                    </div>
+                    <div class="muted">El identificador (<code>@site.Id</code>) no se puede cambiar: nombra el playbook, la sesión del navegador y las credenciales. La clave nunca se muestra; si la dejas vacía se conserva.</div>
+                    <div class="conn-row">
+                        <button type="button" class="choice-btn" disabled="@_busy" @onclick="() => SaveEditAsync(site)">💾 Guardar cambios</button>
+                        <button type="button" class="link-btn" @onclick="() => _editId = null">Cancelar</button>
+                    </div>
+                </div>
+            }
+
+            @if (_selected == site.Id && _playbook is not null)
+            {
+                @if (_panel == "playbook")
+                {
+                    <div class="conn-form">
+                        <textarea @bind="_markdown" @bind:event="oninput" spellcheck="false"></textarea>
+                    </div>
+                    @foreach (var e in _playbook.Errors) { <div class="conn-bad">⚠ @e</div> }
+                    <div class="conn-row"><button type="button" class="choice-btn" disabled="@_busy" @onclick="SavePlaybookAsync">💾 Guardar playbook</button></div>
+
+                    @if (_playbook.Proposal is not null)
+                    {
+                        <h3>🧠 Propuesta aprendida</h3>
+                        <p class="muted">El sistema la grabó tras explorar o reparar. Revísala (reemplaza los <code>{{REVISAR}}</code> por una <code>{{variable}}</code>) y apruébala para que se ejecute sin modelo.</p>
+                        <div class="conn-form"><textarea @bind="_proposal" @bind:event="oninput" spellcheck="false"></textarea></div>
+                        <div class="conn-row">
+                            <button type="button" class="link-btn" disabled="@_busy" @onclick="SaveProposalAsync">💾 Guardar edición</button>
+                            <button type="button" class="choice-btn choice-rec" disabled="@_busy" @onclick="ApproveProposalAsync">✅ Aprobar y activar</button>
+                            <button type="button" class="link-btn" disabled="@_busy" @onclick="RejectProposalAsync">✖ Rechazar</button>
+                        </div>
+                    }
+                }
+                else if (_panel == "run")
+                {
+                    <p class="muted">Ejecutar equivale a aprobar: escribe tú los valores (los campos «redactar» también).</p>
+                    <div class="conn-form">
+                        @foreach (var input in _playbook.Inputs)
+                        {
+                            <label style="display:flex;flex-direction:column;gap:4px">
+                                <span class="muted">@input.Name@(input.Draft ? " (redactar)" : " — " + input.Question)</span>
+                                <input @bind="_values[input.Name]" @bind:event="oninput" />
+                            </label>
+                        }
+                        <input autocomplete="off" placeholder="Usuario (opcional, no se guarda)" @bind="_user" @bind:event="oninput" />
+                        <input type="password" autocomplete="new-password" placeholder="Clave (opcional, no se guarda)" @bind="_pass" @bind:event="oninput" />
+                    </div>
+                    <div class="conn-row"><button type="button" class="choice-btn" disabled="@_busy" @onclick="RunAsync">▶ Ejecutar ahora</button></div>
+                }
+
+                @if (_result is { } r)
+                {
+                    <div class="conn-card">
+                        <div class="@(r.Success ? "conn-ok" : "conn-bad")">@(r.Success ? "✅" : "❌") @r.Message</div>
+                        <div class="muted">⏱ @((r.DurationMs / 1000.0).ToString("0.0")) s · modo @r.Mode · @r.StepsExecuted acciones · @r.ModelCalls llamadas al modelo@(r.ProposalCreated ? " · 🧠 propuesta creada" : string.Empty)</div>
+                        @if (r.Data is { Count: > 0 } rows)
+                        {
+                            <div style="overflow:auto">
+                                <table class="conn-table">
+                                    <thead><tr><th>#</th><th>De</th><th>Asunto</th><th>Fecha</th><th>Vista previa</th></tr></thead>
+                                    <tbody>
+                                    @for (var i = 0; i < rows.Count; i++)
+                                    {
+                                        <tr><td>@(i + 1)</td><td>@(rows[i].Sender ?? rows[i].Text)</td><td>@rows[i].Subject</td><td>@rows[i].Date</td><td>@rows[i].Snippet</td></tr>
+                                    }
+                                    </tbody>
+                                </table>
+                            </div>
+                        }
+                        <pre class="conn-log">@string.Join("\n", r.Log)</pre>
+                    </div>
+                }
+            }
+        </section>
+    }
+</main>
+
+@code {
+    private IReadOnlyList<BrowserSiteDto>? _sites;
+    private string? _error, _info, _selected, _panel, _confirmDelete;
+    private bool _busy;
+
+    private string? _editId;
+    private string _eName = string.Empty, _eUrl = string.Empty, _eDomains = string.Empty, _eMode = string.Empty, _eUser = string.Empty, _ePass = string.Empty;
+    private bool _eEnabled = true;
+    private string _newId = string.Empty, _newName = string.Empty, _newUrl = string.Empty, _newUser = string.Empty, _newPass = string.Empty;
+    private string _newDomains = string.Empty, _newMode = string.Empty;
+
+    private PlaybookDto? _playbook;
+    private string _markdown = string.Empty, _proposal = string.Empty;
+    private Dictionary<string, string> _values = new();
+    private string _user = string.Empty, _pass = string.Empty;
+    private BrowserRunResultDto? _result;
+
+    protected override async Task OnInitializedAsync() => await ReloadAsync();
+
+    private async Task ReloadAsync()
+    {
+        try { _sites = await Api.GetBrowserSitesAsync() ?? Array.Empty<BrowserSiteDto>(); }
+        catch (Exception ex) { _error = ex.Message; _sites = Array.Empty<BrowserSiteDto>(); }
+    }
+
+    /// <summary>Ejecuta una acción mostrando el error de la API si falla y bloqueando los botones mientras tanto.</summary>
+    private async Task GuardAsync(Func<Task> action, string? ok = null)
+    {
+        _busy = true; _error = null; _info = null;
+        try { await action(); if (ok is not null) _info = ok; }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private Task AddAsync() => GuardAsync(async () =>
+    {
+        var domains = _newDomains.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        bool? headless = _newMode switch { "visible" => false, "invisible" => true, _ => null };
+        await Api.CreateBrowserSiteAsync(new BrowserSiteRequestDto(_newId, _newName, _newUrl, domains, headless, true, _newUser, _newPass));
+        _newUser = _newPass = string.Empty;               // no se conservan en el formulario
+        await ReloadAsync();
+    }, "Sitio agregado con un playbook de plantilla. Edítalo con «Playbook».");
+
+    private void StartEdit(BrowserSiteDto site)
+    {
+        _editId = site.Id;
+        _eName = site.Name;
+        _eUrl = site.Url;
+        _eDomains = string.Join(", ", site.AllowedDomains);
+        _eMode = site.Headless switch { true => "invisible", false => "visible", _ => string.Empty };
+        _eEnabled = site.Enabled;
+        _eUser = site.Username ?? string.Empty;
+        _ePass = string.Empty;                              // la clave nunca vuelve del servidor
+    }
+
+    private Task SaveEditAsync(BrowserSiteDto site) => GuardAsync(async () =>
+    {
+        var domains = _eDomains.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        bool? headless = _eMode switch { "visible" => false, "invisible" => true, _ => null };
+        await Api.UpdateBrowserSiteAsync(site.Id, new BrowserSiteRequestDto(site.Id, _eName, _eUrl, domains, headless, _eEnabled,
+            string.IsNullOrWhiteSpace(_eUser) ? null : _eUser, string.IsNullOrEmpty(_ePass) ? null : _ePass));
+        _ePass = string.Empty;
+        _editId = null;
+        await ReloadAsync();
+    }, "Conexión actualizada.");
+
+    private Task ForgetAsync(BrowserSiteDto site) => GuardAsync(async () =>
+    {
+        await Api.ClearBrowserCredentialsAsync(site.Id);
+        await ReloadAsync();
+    }, "Credenciales borradas (se eliminó su archivo .md).");
+
+    private Task DeleteAsync(BrowserSiteDto site) => GuardAsync(async () =>
+    {
+        await Api.DeleteBrowserSiteAsync(site.Id);
+        _confirmDelete = null;
+        if (_selected == site.Id) { _selected = null; _playbook = null; }
+        await ReloadAsync();
+    }, "Sitio quitado.");
+
+    private Task LoginAsync(BrowserSiteDto site) => GuardAsync(async () =>
+    {
+        _info = "Se abrió el navegador: inicia sesión y cierra la ventana cuando termines…";
+        await Api.BrowserLoginAsync(site.Id);
+    }, "Sesión guardada en el perfil del sitio (si cerraste la ventana tras iniciar sesión).");
+
+    private Task OpenAsync(BrowserSiteDto site, string panel) => GuardAsync(async () =>
+    {
+        _selected = site.Id; _panel = panel; _result = null;
+        await LoadPlaybookAsync(site.Id);
+        _values = _playbook!.Inputs.ToDictionary(i => i.Name, _ => string.Empty);
+    });
+
+    private async Task LoadPlaybookAsync(string id)
+    {
+        _playbook = await Api.GetPlaybookAsync(id);
+        _markdown = _playbook?.Markdown ?? string.Empty;
+        _proposal = _playbook?.Proposal ?? string.Empty;
+    }
+
+    private Task SavePlaybookAsync() => GuardAsync(async () =>
+    {
+        _playbook = await Api.SavePlaybookAsync(_selected!, _markdown);
+        _values = _playbook!.Inputs.ToDictionary(i => i.Name, _ => string.Empty);
+    }, "Playbook guardado.");
+
+    private Task SaveProposalAsync() => GuardAsync(async () => _playbook = await Api.SaveProposalAsync(_selected!, _proposal), "Propuesta guardada.");
+
+    private Task ApproveProposalAsync() => GuardAsync(async () =>
+    {
+        _playbook = await Api.ApproveProposalAsync(_selected!);
+        _markdown = _playbook!.Markdown; _proposal = string.Empty;
+        await ReloadAsync();
+    }, "Propuesta aprobada: la próxima ejecución irá sin modelo.");
+
+    private Task RejectProposalAsync() => GuardAsync(async () =>
+    {
+        await Api.RejectProposalAsync(_selected!);
+        await LoadPlaybookAsync(_selected!);
+        await ReloadAsync();
+    }, "Propuesta descartada.");
+
+    private Task RunAsync() => GuardAsync(async () =>
+    {
+        var credentials = string.IsNullOrEmpty(_user) && string.IsNullOrEmpty(_pass) ? null : new BrowserCredentialsDto(_user, _pass);
+        _result = await Api.RunBrowserAsync(_selected!, new BrowserRunRequestDto(_values, credentials));
+        _user = _pass = string.Empty;                       // las credenciales no se conservan
+        await ReloadAsync();
+        await LoadPlaybookAsync(_selected!);
+    });
+}

@@ -45,5 +45,18 @@
         "recommended": true
       }
     ]
+  },
+  "browserApproval": {
+    "conversationId": "11111111-1111-1111-1111-111111111111",
+    "siteId": "mail",
+    "siteName": "Correo",
+    "title": "Enviar correo",
+    "fields": [
+      {
+        "name": "asunto",
+        "value": "Hola"
+      }
+    ],
+    "irreversible": true
   }
 }

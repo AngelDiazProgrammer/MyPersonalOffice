@@ -1,4 +1,5 @@
 using AI.Agent.Office.Application.Agents;
+using AI.Agent.Office.Application.Browser;
 using AI.Agent.Office.Application.Interfaces;
 using AI.Agent.Office.Application.Options;
 using AI.Agent.Office.Application.Orchestration;
@@ -123,6 +124,14 @@ public sealed class OfficeHarness
     public FakeFormatService Formats { get; } = new();
     public WorkspaceService Workspaces { get; }
     public PendingChoiceStore Pending { get; } = new();
+    public InMemorySiteStore BrowserSites { get; } = new();
+    public InMemoryPlaybookStore BrowserPlaybooks { get; } = new();
+    public FakeSessionFactory BrowserSessions { get; } = new();
+    public BrowserCredentialStore BrowserSecrets { get; } = new();
+    public BrowserOptions BrowserConfig { get; } = new() { Enabled = true, MaxExploreActions = 4 };
+    public BrowserRunner BrowserRunner { get; private set; } = null!;
+    public BrowserWorkflow Browser { get; private set; } = null!;
+    public BrowserPendingStore BrowserPending { get; private set; } = null!;
     public RecordingPublisher Publisher { get; } = new();
     public AgentRegistry Registry { get; } = new();
     public TaskStore Tasks { get; } = new();
@@ -156,6 +165,10 @@ public sealed class OfficeHarness
         configureKnowledge?.Invoke(knowledgeOptions);
         var workflow = new KnowledgeWorkflow(Knowledge, Formats, Configuration, Workspaces,
             Microsoft.Extensions.Options.Options.Create(knowledgeOptions), NullLogger<KnowledgeWorkflow>.Instance);
+        var browserOptions = Microsoft.Extensions.Options.Options.Create(BrowserConfig);
+        BrowserRunner = new BrowserRunner(BrowserSessions, Anthropic, BrowserPlaybooks, BrowserSecrets, browserOptions, NullLogger<BrowserRunner>.Instance);
+        BrowserPending = new BrowserPendingStore(browserOptions);
+        Browser = new BrowserWorkflow(BrowserSites, BrowserPlaybooks, BrowserPending, BrowserRunner, Anthropic, Conversations, Events, browserOptions);
         _executor = executor;
         _workflow = workflow;
         _options = options;
@@ -170,7 +183,7 @@ public sealed class OfficeHarness
     /// <summary>A second orchestration service sharing everything but the workspace selection (the workflow keeps its own).</summary>
     public OrchestrationService CreateOrchestration(IWorkspaceService workspaces) =>
         new(Anthropic, Configuration, Conversations, Tasks, Documents, State, Events,
-            _executor, _workflow, workspaces, Word, Word, Pending, _options, _loggers.CreateLogger<OrchestrationService>());
+            _executor, _workflow, workspaces, Word, Word, Pending, Browser, _options, _loggers.CreateLogger<OrchestrationService>());
 
     /// <summary>Anthropic fake: planning calls get <paramref name="decisionJson"/>, everything else is answered by <paramref name="agentReply"/>.</summary>
     public void Script(string decisionJson, Func<LlmRequest, CancellationToken, Task<LlmResponse>>? agentReply = null)

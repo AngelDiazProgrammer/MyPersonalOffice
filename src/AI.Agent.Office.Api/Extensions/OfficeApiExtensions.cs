@@ -90,7 +90,7 @@ public static class OfficeApiExtensions
         {
             Predicate = check => check.Tags.Contains(ReadinessTags.Ready),
             ResponseWriter = ReadinessResponse.WriteAsync
-        });
+        }).AllowAnonymous();
         return endpoints;
     }
 
@@ -126,7 +126,7 @@ public static class OfficeApiExtensions
 
         app.MapControllers();
         app.MapHub<OfficeHub>(OfficeHub.Route);
-        app.MapGet("/health", () => Results.Ok(new { status = "ok" }));      // «vivo»: la aplicación responde
+        app.MapGet("/health", () => Results.Ok(new { status = "ok" })).AllowAnonymous();      // «vivo»: la aplicación responde
         app.MapOfficeHealth();                                                  // «listo»: sus componentes necesarios están cargados
         return app;
     }

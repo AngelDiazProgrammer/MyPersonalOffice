@@ -1,0 +1,13 @@
+{
+  "id": "mail",
+  "name": "Correo",
+  "url": "https://mail.example.com",
+  "allowedDomains": [
+    "example.com"
+  ],
+  "headless": false,
+  "enabled": true,
+  "hasProposal": true,
+  "hasCredentials": true,
+  "username": "ana"
+}

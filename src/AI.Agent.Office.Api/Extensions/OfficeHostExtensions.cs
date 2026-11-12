@@ -28,6 +28,11 @@ public static class OfficeHostExtensions
             o.UseUtcTimestamp = true;
             o.TimestampFormat = "yyyy-MM-ddTHH:mm:ss.fffZ";
         });
+
+        // Registro en vivo en memoria para la sección «Logs» (spec 010).
+        var store = new Logging.InMemoryLogStore();
+        logging.Services.AddSingleton(store);
+        logging.AddProvider(new Logging.InMemoryLoggerProvider(store));
         return logging;
     }
 

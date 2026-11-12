@@ -1,5 +1,7 @@
 using System.Text;
 using AI.Agent.Office.Application.Agents;
+using AI.Agent.Office.Application.Browser;
+using AI.Agent.Office.Application.Camila;
 using AI.Agent.Office.Application.DTOs;
 using AI.Agent.Office.Application.Events;
 using AI.Agent.Office.Application.Interfaces;
@@ -37,6 +39,8 @@ public sealed class OrchestrationService : IOrchestrationService
     private readonly IWordExportService _word;
     private readonly IPdfExportService _pdf;
     private readonly IPendingChoiceStore _pending;
+    private readonly BrowserWorkflow _browser;
+    private readonly CamilaWorkflow? _camila;
     private readonly OrchestrationOptions _options;
     private readonly ILogger<OrchestrationService> _logger;
 
@@ -54,9 +58,12 @@ public sealed class OrchestrationService : IOrchestrationService
         IWordExportService word,
         IPdfExportService pdf,
         IPendingChoiceStore pending,
+        BrowserWorkflow browser,
         IOptions<OrchestrationOptions> options,
-        ILogger<OrchestrationService> logger)
+        ILogger<OrchestrationService> logger,
+        CamilaWorkflow? camila = null)
     {
+        _camila = camila;
         _anthropic = anthropic;
         _configuration = configuration;
         _conversations = conversations;
@@ -70,6 +77,7 @@ public sealed class OrchestrationService : IOrchestrationService
         _word = word;
         _pdf = pdf;
         _pending = pending;
+        _browser = browser;
         _options = options.Value;
         _logger = logger;
     }
@@ -95,7 +103,9 @@ public sealed class OrchestrationService : IOrchestrationService
     /// </summary>
     public async Task<ChatResponseDto> HandleMessageAsync(ChatRequestDto request, CancellationToken cancellationToken)
     {
-        if (_workspaces.RequiresSelection)
+        // Los entornos de Camila (chatbots y agentes conversacionales) indican su destino en la petición y no dependen de la oficina abierta.
+        var camilaTarget = CamilaTarget.Parse(request?.Target);
+        if (camilaTarget is null && _workspaces.RequiresSelection)
             throw new OfficeValidationException(new[] { "Elige primero una oficina (Desarrollo o Pruebas base de conocimiento)." });
 
         var errors = ChatRequestValidator.Validate(request, _options.MaxMessageChars);
@@ -122,8 +132,14 @@ public sealed class OrchestrationService : IOrchestrationService
         conversation.Add(new ChatMessage { Role = ChatRole.User, Content = userText });
         var convData = new Dictionary<string, string?> { [EventDataKeys.ConversationId] = conversation.Id.ToString() };
 
+        // En las oficinas de Camila el texto de la persona puede traer datos personales (una cédula): no entra a la bitácora de actividad.
+        var inCamila = _camila is not null && camilaTarget is not null;
         await _events.EmitAsync(OfficeEventType.OrchestrationStarted,
-            $"Nueva solicitud: {Shorten(userText, 80)}", orchestrator.Id, data: convData).ConfigureAwait(false);
+            inCamila ? "Nuevo mensaje para Camila." : $"Nueva solicitud: {Shorten(userText, 80)}", orchestrator.Id, data: convData).ConfigureAwait(false);
+
+        // Camila IA (spec 009): estas oficinas no usan el planificador de agentes; el chat va directo a su motor de flujos.
+        if (_camila is not null && camilaTarget is not null)
+            return await HandleCamilaAsync(camilaTarget, conversation, orchestrator, userText, request.ChoiceOptionId, runCts, convData, cancellationToken).ConfigureAwait(false);
 
         var reply = string.Empty;
         string? planMessage = null;
@@ -132,6 +148,8 @@ public sealed class OrchestrationService : IOrchestrationService
         IReadOnlyList<AgentTask> executed = Array.Empty<AgentTask>();
         var deliverables = new List<GeneratedDocumentDto>();
         KnowledgeChoiceDto? choice = null;
+        BrowserApprovalDto? browserApproval = null;
+        string? historyOverride = null;
 
         try
         {
@@ -164,7 +182,17 @@ public sealed class OrchestrationService : IOrchestrationService
 
             #endregion
 
-            if (pending is null && !string.IsNullOrWhiteSpace(request.ChoiceOptionId))
+            // Conectividad a navegadores (spec 007): una operación pendiente, o un disparador de playbook, se atiende aquí.
+            // Si otro flujo espera una elección de la persona, este no arranca.
+            var browserTurn = await _browser.HandleAsync(conversation.Id, userText, request.ChoiceOptionId, allowStart: pending is null, runCts.Token).ConfigureAwait(false);
+
+            if (browserTurn is not null)
+            {
+                decision = new OrchestratorDecision { Action = DecisionActions.Respond, Message = browserTurn.Reply };
+                browserApproval = browserTurn.Approval;
+                historyOverride = browserTurn.HistoryText;
+            }
+            else if (pending is null && !string.IsNullOrWhiteSpace(request.ChoiceOptionId))
             {
                 // Se eligió una opción (o se canceló) pero no hay caso pendiente: se responde aquí, sin gastar una llamada a un modelo.
                 decision = new OrchestratorDecision { Action = DecisionActions.Respond, Message = "No hay ningún caso esperando una elección. Cuéntame tu situación y la busco en la base de conocimiento." };
@@ -333,7 +361,7 @@ public sealed class OrchestrationService : IOrchestrationService
             _conversations.UnregisterRun(conversation.Id, runCts);
         }
 
-        conversation.Add(new ChatMessage { Role = ChatRole.Assistant, Content = reply });
+        conversation.Add(new ChatMessage { Role = ChatRole.Assistant, Content = historyOverride ?? reply });
         await _events.EmitAsync(OfficeEventType.OrchestrationCompleted,
             isError ? "Solicitud finalizada con errores." : "Solicitud completada.", orchestrator.Id,
             data: new Dictionary<string, string?>(convData) { [EventDataKeys.Delegated] = delegated.ToString() }).ConfigureAwait(false);
@@ -344,7 +372,61 @@ public sealed class OrchestrationService : IOrchestrationService
             executed.Select(t => t.ToDto()).ToArray(),
             executed.Where(t => t.DocumentId is not null && deliverables.All(d => d.Id != t.DocumentId))
                 .Select(t => new GeneratedDocumentDto(t.DocumentId!.Value, t.DocumentName ?? "documento.docx", 0))
-                .Concat(deliverables).ToArray(), choice);
+                .Concat(deliverables).ToArray(), choice, browserApproval);
+    }
+
+    #endregion
+
+    #region Camila IA (spec 009)
+
+    /// <summary>
+    /// Atiende el mensaje en una oficina de Camila (UML o Conversacional). Registra la solicitud igual que el resto de oficinas, pero
+    /// el texto no entra al registro de actividad y los datos de la conversación viven solo en memoria.
+    /// </summary>
+    private async Task<ChatResponseDto> HandleCamilaAsync(
+        CamilaTarget target, Conversation conversation, AgentDefinition orchestrator, string userText, string? optionId,
+        CancellationTokenSource runCts, Dictionary<string, string?> convData, CancellationToken cancellationToken)
+    {
+        // Quien trabaja es el agente ejecutor del destino (LectorUML o CamilaIA): sus estados y su consumo se atribuyen a él (spec 012, RF-008).
+        var actorId = _camila!.ExecutorOf(target);
+        if (_configuration.GetDefinition(actorId) is null) actorId = orchestrator.Id;
+        var reply = string.Empty;
+        KnowledgeChoiceDto? choice = null;
+        var isError = false;
+
+        try
+        {
+            await _state.SetAsync(actorId, AgentStatus.Thinking, OfficeEventType.AgentThinking,
+                "Camila procesa el mensaje.", data: convData).ConfigureAwait(false);
+
+            var result = await _camila.HandleAsync(target, conversation.Id, userText, optionId, runCts.Token).ConfigureAwait(false);
+            (reply, choice, isError) = (result.Reply, result.Choice, result.IsError);
+
+            await _state.SetAsync(actorId, isError ? AgentStatus.Error : AgentStatus.Completed, isError ? OfficeEventType.AgentError : OfficeEventType.AgentCompleted,
+                "Camila respondió.", clearTask: true, data: convData).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested || runCts.IsCancellationRequested)
+        {
+            (reply, isError) = ("La solicitud fue cancelada.", true);
+            await _state.SetAsync(actorId, AgentStatus.Idle, OfficeEventType.AgentProgress, "Solicitud cancelada.", clearTask: true, data: convData).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            (reply, isError) = ("Ocurrió un error inesperado en Camila. Revisa los registros del servidor.", true);
+            _logger.LogError(ex, "Error inesperado en Camila IA (conversación {ConversationId})", conversation.Id);
+            await _state.SetAsync(actorId, AgentStatus.Error, OfficeEventType.AgentError, "Error inesperado de Camila.", clearTask: true, data: convData).ConfigureAwait(false);
+        }
+        finally
+        {
+            _conversations.UnregisterRun(conversation.Id, runCts);
+        }
+
+        conversation.Add(new ChatMessage { Role = ChatRole.Assistant, Content = reply });
+        await _events.EmitAsync(OfficeEventType.OrchestrationCompleted, isError ? "Solicitud finalizada con errores." : "Solicitud completada.", actorId,
+            data: new Dictionary<string, string?>(convData) { [EventDataKeys.Delegated] = bool.FalseString }).ConfigureAwait(false);
+        _state.ReturnToIdleAfter(actorId, TimeSpan.FromSeconds(_options.CompletedDisplaySeconds));
+
+        return new ChatResponseDto(conversation.Id, reply, false, isError, null, Array.Empty<AgentTaskDto>(), null, choice, null);
     }
 
     #endregion
